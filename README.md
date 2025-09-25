@@ -10,6 +10,8 @@ API 文件。
 - 主要功能
 - 系統架構與元件
 - Docker 容器配置說明（一步一步）
+- Zeabur 部署與 CI/CD（一步一步）
+- 環境變數（本機與雲端通用）
 - 常見問題排查
 
 ---
@@ -182,12 +184,93 @@ docker-compose down -v
 
 ---
 
+## Zeabur 部署與 CI/CD
+
+這個專案提供 `Dockerfile`，Zeabur 會自動偵測並建置。建議建立 3 個服務：App、Full-Text RSS、MySQL。
+
+1) 連結 Repo 與自動部署
+
+- 在 Zeabur 新建 Project → 連 GitHub → 選此 repo 的 main 分支 → 打開 Auto Deploy。
+
+2) 部署 App 服務（Spring Boot）
+
+- 類型：GitHub（使用本專案 Dockerfile 建置）
+- 綁定子網域：例如 `https://linlinews.zeabur.app`
+- 設定環境變數：
+
+```bash
+# 依你的 MySQL 與 FTR 調整
+SPRING_DATASOURCE_URL=jdbc:mysql://<MYSQL_HOST>:<MYSQL_PORT>/linli_news?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=UTC&createDatabaseIfNotExist=true
+SPRING_DATASOURCE_USERNAME=<MYSQL_USER>
+SPRING_DATASOURCE_PASSWORD=<MYSQL_PASSWORD>
+FULLTEXTRSS_BASE_URL=http://<FTR_INTERNAL_HOST>        # 例如 http://heussdfivefilters-full-text-rsslatest.zeabur.internal
+JOBRUNR_SCHEDULER_ENABLED=true
+JOBRUNR_BACKGROUND_ENABLED=true
+JOBRUNR_DASHBOARD_ENABLED=false
+```
+
+3) 部署 Full-Text RSS 服務（FTR）
+
+- 類型：Docker 容器映像
+- 映像：`heussd/fivefilters-full-text-rss:latest`
+- Port：80 / HTTP
+- 僅開「內網存取」，取得內網主機名（結尾 `.zeabur.internal`），填入 App 的 `FULLTEXTRSS_BASE_URL`
+
+4) 部署 MySQL（Add-on 或容器）
+
+- 從面板取得 Host、Port、Database、Username、Password
+- 回填至 App 的 `SPRING_DATASOURCE_*` 環境變數
+
+5) 驗證部署
+
+```bash
+# Swagger 文件
+open https://<你的子網域>/swagger-ui/index.html
+
+# 免等排程，先手動匯入一個分類驗證（管理端點）
+curl -s -X POST "https://<你的子網域>/api/articles/admin/import-bbc?section=uk" | jq .
+
+# 查詢文章列表（含可直接渲染的 contentHtml）
+curl -s "https://<你的子網域>/api/articles?page=0&size=5&section=uk" | jq '.content[] | {id, title, hasHtml: (.contentHtml|length>0), htmlLen: (.contentHtml|length)}'
+```
+
+小貼士：
+
+- FTR 建議僅內網存取，不綁定公開網域。
+- App 服務副本數建議 1，避免多副本重複執行排程。若要水平擴展，關閉非主副本的 `JOBRUNR_*`.
+
+---
+
+## 環境變數（本機與雲端通用）
+
+必填／常用：
+
+- `PORT`：平台會注入（本機預設 8080）
+- `SPRING_DATASOURCE_URL`：MySQL JDBC URL
+- `SPRING_DATASOURCE_USERNAME`：MySQL 使用者
+- `SPRING_DATASOURCE_PASSWORD`：MySQL 密碼
+- `FULLTEXTRSS_BASE_URL`：Full-Text RSS 服務位址（本機預設 `http://localhost:8085`）
+
+可選：
+
+- `SPRING_FLYWAY_ENABLED`（預設 true）
+- `JOBRUNR_SCHEDULER_ENABLED`（預設 true）
+- `JOBRUNR_BACKGROUND_ENABLED`（預設 true）
+- `JOBRUNR_DASHBOARD_ENABLED`（預設 false，雲端建議關閉）
+- `JOBRUNR_DASHBOARD_PORT`（預設 8001）
+
+說明：`application.yml` 已內建預設值，若未提供則使用本機開發合理預設（如 `http://localhost:8085`）。
+
+---
+
 ## 常見問題排查
 
 - 8080 已被占用 → 關閉其他服務或修改 `server.port`
 - 8001 JobRunr Dashboard 衝突 → 在 `application.yml` 調整 port 或停用 dashboard
 - MySQL 連不上 → 確認 `docker-compose ps` 顯示 `healthy`，且應用程式使用 `localhost:3307`
 - Full-Text RSS 無回應 → 確認 `http://localhost:8085` 可開啟（容器運行中）
+- Zeabur 上 FTR 內網 URL 怎麼取得？→ FTR 服務 → 網路 → 內網存取，複製主機名（`.zeabur.internal`）。
+- 如何切換本機/雲端的 FTR？→ 設定／不設定 `FULLTEXTRSS_BASE_URL` 即可（未設定時預設 `http://localhost:8085`）。
 
 ---
 
