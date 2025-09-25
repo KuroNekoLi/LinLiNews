@@ -1,0 +1,35 @@
+server:
+  port: ${PORT:8080}
+
+fulltextrss:
+  base-url: ${FULLTEXTRSS_BASE_URL:http://localhost:8085}
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3307/linli_news?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=UTC&createDatabaseIfNotExist=true}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:rootpwd}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+  flyway:
+    enabled: ${SPRING_FLYWAY_ENABLED:true}
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+org:
+  jobrunr:
+    job-scheduler:
+      enabled: ${JOBRUNR_SCHEDULER_ENABLED:true}
+    background-job-server:
+      enabled: ${JOBRUNR_BACKGROUND_ENABLED:true}
+    dashboard:
+      enabled: ${JOBRUNR_DASHBOARD_ENABLED:false}
+      port: ${JOBRUNR_DASHBOARD_PORT:8001}
