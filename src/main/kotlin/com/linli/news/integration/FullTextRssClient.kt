@@ -30,7 +30,16 @@ class FullTextRssClient(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         )
         .build()
-    private val logger = LoggerFactory.getLogger(FullTextRssClient::class.java)
+
+    private val logger = object {
+        fun info(message: String) {}
+        fun error(message: String) {}
+        fun error(message: String, throwable: Throwable) {}
+        fun warn(message: String) {}
+
+    }
+
+//    private val logger = LoggerFactory.getLogger(FullTextRssClient::class.java)
     private val objectMapper = ObjectMapper()
 
     /**

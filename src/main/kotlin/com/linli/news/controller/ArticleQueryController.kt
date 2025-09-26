@@ -20,6 +20,8 @@ import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.tags.Tag
 import com.linli.news.service.FeedImportService
+import com.linli.news.service.AiArticleService
+import com.linli.news.model.AiArticleDetail
 
 @Schema(name = "Article", description = "文章資料（所有端點統一結構）")
 data class ArticleDetail(
@@ -47,7 +49,8 @@ data class ArticleDetail(
 class ArticleQueryController(
     private val articleRepository: ArticleRepository,
     private val fullTextRssClient: FullTextRssClient,
-    private val feedImportService: FeedImportService
+    private val feedImportService: FeedImportService,
+    private val aiArticleService: AiArticleService
 ) {
     /**
      * 分頁查詢最新文章，可依 `source` 與 `section` 過濾。
@@ -404,6 +407,28 @@ class ArticleQueryController(
                 "imported" to imported
             )
         )
+    }
+
+    @PostMapping("/{id}/ai/process")
+    @Operation(
+        summary = "使用 GPT-4o 解析並落地後回傳（統一文章物件）",
+        description = "輸入文章 ID；若未解析則即時解析並存庫，最後回傳統一文章物件（含 AI 欄位）。"
+    )
+    fun aiProcessArticle(@PathVariable id: Long): ResponseEntity<AiArticleDetail> {
+        val article = articleRepository.findById(id).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+        if (article.contentHtml.isNullOrBlank()) {
+            return ResponseEntity.badRequest().build()
+        }
+        return try {
+            val dto = aiArticleService.processAndOverwriteDto(id)
+            ResponseEntity.ok(dto)
+        } catch (e: com.linli.news.service.AiQuotaException) {
+            // Map to 429; client should stop retrying until quota is fixed.
+            ResponseEntity.status(429)
+                .header("X-Error", "AI quota exceeded; please check billing")
+                .build()
+        }
     }
 
     private fun extractTextFromHtml(html: String?): String? {

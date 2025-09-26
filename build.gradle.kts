@@ -20,6 +20,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.flywaydb:flyway-core")
@@ -27,6 +28,7 @@ dependencies {
     implementation("org.jobrunr:jobrunr-spring-boot-3-starter:7.3.0")
     // OpenAPI/Swagger UI for auto-generated API docs
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
+    // HTTP client utilities (already in Spring), JSON handled by Jackson
     runtimeOnly("com.mysql:mysql-connector-j")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
 }

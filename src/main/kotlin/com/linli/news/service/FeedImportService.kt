@@ -18,7 +18,7 @@ class FeedImportService(
     private val articleRepository: ArticleRepository,
     private val articleSourceRepository: ArticleSourceRepository
 ) {
-
+    private fun println(message: String) = {}
     /**
      * 從 RSS 匯入全文文章並儲存。
      *

@@ -101,6 +101,7 @@ curl -s -X POST "http://localhost:8080/api/articles/admin/import-bbc?section=wor
 - GET `/api/articles/random?count=3&source=BBC&section=news` 隨機文章
 - POST `/api/articles/cleanup-invalid-articles` 清理無效文章
 - POST `/api/articles/admin/import-bbc?section=...` 即時匯入單一 BBC 分類（測試使用）
+- POST `/api/articles/{id}/ai/process` 使用 GPT-4o 清理內文、生成教學與繁中翻譯（嚴格 JSON 回應）
 
 ---
 
@@ -207,6 +208,9 @@ FULLTEXTRSS_BASE_URL=http://<FTR_INTERNAL_HOST>        # 例如 http://heussdfiv
 JOBRUNR_SCHEDULER_ENABLED=true
 JOBRUNR_BACKGROUND_ENABLED=true
 JOBRUNR_DASHBOARD_ENABLED=false
+OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4o
 ```
 
 3) 部署 Full-Text RSS 服務（FTR）
@@ -251,6 +255,12 @@ curl -s "https://<你的子網域>/api/articles?page=0&size=5&section=uk" | jq '
 - `SPRING_DATASOURCE_PASSWORD`：MySQL 密碼
 - `FULLTEXTRSS_BASE_URL`：Full-Text RSS 服務位址（本機預設 `http://localhost:8085`）
 
+AI 設定：
+
+- `OPENAI_API_KEY`：OpenAI 金鑰（必要）
+- `OPENAI_BASE_URL`：預設 `https://api.openai.com/v1`
+- `OPENAI_MODEL`：預設 `gpt-4o`
+
 可選：
 
 - `SPRING_FLYWAY_ENABLED`（預設 true）
@@ -271,6 +281,7 @@ curl -s "https://<你的子網域>/api/articles?page=0&size=5&section=uk" | jq '
 - Full-Text RSS 無回應 → 確認 `http://localhost:8085` 可開啟（容器運行中）
 - Zeabur 上 FTR 內網 URL 怎麼取得？→ FTR 服務 → 網路 → 內網存取，複製主機名（`.zeabur.internal`）。
 - 如何切換本機/雲端的 FTR？→ 設定／不設定 `FULLTEXTRSS_BASE_URL` 即可（未設定時預設 `http://localhost:8085`）。
+- AI 回傳非 JSON？→ 我們強制使用 JSON 模式；若仍失敗，確認 `OPENAI_API_KEY` 是否有效，或文章 HTML 是否過於破碎。
 
 ---
 
