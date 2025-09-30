@@ -227,7 +227,24 @@ docker-compose down -v
 **2) 部署 App 服務（Spring Boot）**
 - 類型：GitHub（使用本專案 Dockerfile 建置）
 - 綁定子網域：例如 `https://linlinews.zeabur.app`
-- 設定環境變數（見下方）
+- 設定環境變數（見下方）：
+  ```bash
+  # 必要環境變數
+  SPRING_PROFILES_ACTIVE=prod
+  
+  # 資料庫連線
+  SPRING_DATASOURCE_URL=jdbc:mysql://<MYSQL_HOST>:<MYSQL_PORT>/linli_news?...
+  SPRING_DATASOURCE_USERNAME=<MYSQL_USER>
+  SPRING_DATASOURCE_PASSWORD=<MYSQL_PASSWORD>
+  
+  # Full-Text RSS
+  FULLTEXTRSS_BASE_URL=http://<FTR_INTERNAL_HOST>
+  
+  # OpenAI API
+  OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>
+  ```
+
+  **SERVER_URL** 是可選的，通常不需要設定，因為 springdoc-openapi 會自動從 HTTP 請求偵測伺服器 URL。
 
 **3) 部署 Full-Text RSS 服務**
 
@@ -288,6 +305,11 @@ JOBRUNR_SCHEDULER_ENABLED=true
 JOBRUNR_BACKGROUND_ENABLED=true
 JOBRUNR_DASHBOARD_ENABLED=false  # 雲端建議關閉
 JOBRUNR_DASHBOARD_PORT=8001
+
+# Swagger 自訂伺服器 URL（選填，通常不需要設定）
+# 注意：springdoc-openapi 會自動從 HTTP 請求偵測伺服器 URL
+# 大多數情況下不需要設定此變數
+# SERVER_URL=https://your-domain.zeabur.app
 ```
 
 **說明**：`application.yml` 已內建預設值，未提供環境變數時使用本機開發的合理預設。
@@ -327,6 +349,13 @@ JOBRUNR_DASHBOARD_PORT=8001
 **Q: 測試/管理端點無法存取**
 
 - A: 測試端點（如 `/api/ops/*`、`/api/background-jobs/*`）預設在生產環境（`prod` profile）被停用
+
+**Q: Swagger 文件中的伺服器 URL 顯示為 localhost:8080**
+
+- A: 這通常不會發生，因為 springdoc-openapi 會自動從 HTTP 請求偵測伺服器 URL（透過 `X-Forwarded-*` 標頭）。
+    - 在 Zeabur 等平台部署時，反向代理會自動設定這些標頭
+    - 本專案已配置 `server.forward-headers-strategy=framework` 來支援此功能
+    - 如果仍顯示錯誤 URL，可選擇性設定 `SERVER_URL` 環境變數，但通常不需要
 
 ### AI 功能
 

@@ -13,6 +13,9 @@ import org.springframework.context.annotation.Configuration
  * OpenAPI (Swagger) 配置
  *
  * 配置 API 文件的基本資訊與伺服器設定
+ *
+ * 注意：springdoc-openapi 預設會從 HTTP 請求自動偵測伺服器 URL
+ * 僅在需要額外的伺服器選項時才需要手動配置 SERVER_URL
  */
 @Configuration
 class OpenApiConfiguration {
@@ -20,14 +23,19 @@ class OpenApiConfiguration {
     /**
      * 配置 OpenAPI 文件資訊
      *
-     * @param serverUrl 伺服器網址（從環境變數或配置檔讀取）
+     * springdoc-openapi 會自動從 HTTP 請求中偵測伺服器 URL，
+     * 支援反向代理的 X-Forwarded-* 標頭。
+     *
+     * 如果設定 SERVER_URL 環境變數，會作為額外的伺服器選項添加到清單中。
+     *
+     * @param serverUrl 可選的自訂伺服器網址（從環境變數讀取）
      * @return OpenAPI 配置物件
      */
     @Bean
     fun customOpenAPI(
-        @Value("\${server.url:http://localhost:8080}") serverUrl: String
+        @Value("\${server.url:}") serverUrl: String?
     ): OpenAPI {
-        return OpenAPI()
+        val openAPI = OpenAPI()
             .info(
                 Info()
                     .title("LinLi News API")
@@ -61,10 +69,19 @@ class OpenApiConfiguration {
                             .url("https://linlinews.com/license")
                     )
             )
-            .addServersItem(
+
+        // 如果有提供自訂 SERVER_URL，將其作為額外選項添加
+        // 這對於需要明確指定特定伺服器時很有用（例如：多區域部署）
+        if (!serverUrl.isNullOrBlank()) {
+            openAPI.addServersItem(
                 Server()
                     .url(serverUrl)
-                    .description("API 伺服器")
+                    .description("自訂伺服器")
             )
+        }
+
+        // 注意：不需要添加 localhost，springdoc 會自動從請求偵測當前伺服器 URL
+
+        return openAPI
     }
 }

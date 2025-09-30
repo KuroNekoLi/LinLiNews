@@ -1,5 +1,10 @@
 server:
   port: ${PORT:8080}
+  # 支援反向代理標頭（Zeabur、Nginx 等會自動設定 X-Forwarded-* 標頭）
+  # 這讓 Swagger 能自動偵測正確的生產環境 URL
+  forward-headers-strategy: framework
+  # Swagger 伺服器 URL（生產環境請設定為實際網址，例如：https://your-domain.zeabur.app）（選填）
+  url: ${SERVER_URL:}
 
 fulltextrss:
   base-url: ${FULLTEXTRSS_BASE_URL:http://localhost:8085}
