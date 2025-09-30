@@ -20,6 +20,7 @@ import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.tags.Tag
+import io.swagger.v3.oas.annotations.Hidden
 import com.linli.news.service.FeedImportService
 import com.linli.news.service.AiArticleService
 import com.linli.news.model.AiArticleDetail
@@ -164,6 +165,7 @@ class ArticleQueryController(
      */
     @PostMapping("/{id}/fetch-content")
     @Profile("!prod")
+    @Hidden
     @Operation(
         summary = "[測試] 補齊指定文章的全文內容",
         description = "使用 Full-Text RSS 提取內容並更新資料庫（僅限非生產環境）"
@@ -205,6 +207,7 @@ class ArticleQueryController(
      */
     @PostMapping("/fetch-all-missing-content")
     @Profile("!prod")
+    @Hidden
     @Operation(
         summary = "[測試] 批次補齊缺少全文的文章",
         description = "找出所有 contentHtml 為空的文章並嘗試補齊（僅限非生產環境）"
@@ -354,6 +357,7 @@ class ArticleQueryController(
      */
     @PostMapping("/cleanup-invalid-articles")
     @Profile("!prod")
+    @Hidden
     @Operation(
         summary = "[管理] 清理無效文章",
         description = "移除報紙頭版合集、音頻/影片入口等非新聞文章（僅限非生產環境）"
@@ -410,6 +414,7 @@ class ArticleQueryController(
      */
     @PostMapping("/admin/import-bbc")
     @Profile("!prod")
+    @Hidden
     @Operation(
         summary = "[管理] 立即匯入 BBC RSS（用於測試排程的來源）",
         description = "依 section 觸發對應 BBC RSS 的一次性匯入。支援：news、world、uk、technology、business、health、science_and_environment、entertainment_and_arts、politics、education、world_africa、world_asia、world_europe、world_middle_east、world_us_and_canada、world_latin_america（僅限非生產環境）"

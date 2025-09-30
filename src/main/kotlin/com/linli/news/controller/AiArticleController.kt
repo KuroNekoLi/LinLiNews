@@ -15,6 +15,7 @@ import java.util.regex.Pattern
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.springframework.http.ResponseEntity
+import io.swagger.v3.oas.annotations.Hidden
 
 /**
  * AI 文章控制器
@@ -106,6 +107,43 @@ class AiArticleController(
     }
 
     /**
+     * 隨機取得 n 篇文章並自動進行 AI 處理
+     *
+     * 若文章尚未經 AI 處理，會自動進行處理並儲存
+     *
+     * @param count 文章數量（最多 20）
+     * @param source 來源過濾，例如 BBC、CNN
+     * @param section 區塊過濾，例如 news、world、technology
+     * @return 隨機 AI 文章清單與統計資訊
+     */
+    @GetMapping("/random-with-processing")
+    @Operation(
+        summary = "隨機取得 n 篇文章並自動進行 AI 處理",
+        description = "從資料庫隨機抽取文章，若尚未經 AI 處理則自動處理並儲存。可選擇以來源/區塊過濾。"
+    )
+    fun randomWithProcessing(
+        @Parameter(description = "文章數量（最多 20）")
+        @RequestParam(name = "count", defaultValue = "5") count: Int,
+        @Parameter(description = "來源過濾，例如 BBC、CNN")
+        @RequestParam(name = "source", required = false) source: String?,
+        @Parameter(description = "區塊過濾，例如 news、world、technology")
+        @RequestParam(name = "section", required = false) section: String?
+    ): Map<String, Any> {
+        val limited = kotlin.math.min(count, 20)
+        val (aiList, total, processedCount) = aiArticleService.randomWithProcessing(limited, source, section)
+        val items = aiList.map { toDto(it) }
+        return mapOf(
+            "message" to "success",
+            "requestedCount" to limited,
+            "actualCount" to items.count(),
+            "totalAvailable" to total,
+            "processedCount" to processedCount,
+            "filters" to mapOf("source" to source, "section" to section),
+            "articles" to items
+        )
+    }
+
+    /**
      * 調試端點：查看 AI 產生的原始 JSON
      *
      * @param id 文章 ID
@@ -113,6 +151,7 @@ class AiArticleController(
      */
     @GetMapping("/{id}/debug-raw-json")
     @Profile("!prod")
+    @Hidden
     @Operation(
         summary = "[測試] 查看 AI 原始 JSON",
         description = "調試用端點，檢視 AI 產生的原始 JSON 資料（僅限非生產環境）"
@@ -151,6 +190,7 @@ class AiArticleController(
      */
     @PostMapping("/{id}/reprocess-with-debug")
     @Profile("!prod")
+    @Hidden
     @Operation(
         summary = "[測試] 重新處理並診斷",
         description = "測試用端點，重新處理文章並回傳詳細診斷信息（僅限非生產環境）"
@@ -201,6 +241,7 @@ class AiArticleController(
      */
     @PostMapping("/test-json-parsing")
     @Profile("!prod")
+    @Hidden
     @Operation(
         summary = "[測試] 測試 JSON 解析",
         description = "測試用端點，驗證 Explanation JSON 的解析功能（僅限非生產環境）"

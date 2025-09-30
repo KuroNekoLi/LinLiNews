@@ -13,6 +13,7 @@ import java.time.OffsetDateTime
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
+import io.swagger.v3.oas.annotations.Hidden
 
 /**
  * 匯入驗證控制器
@@ -25,6 +26,7 @@ import io.swagger.v3.oas.annotations.tags.Tag
 @RestController
 @RequestMapping("/api/ops")
 @Profile("!prod")
+@Hidden
 @Tag(name = "運維驗證 API", description = "運維用驗證端點（僅限非生產環境）")
 class ImportVerificationController(
     private val articleRepository: ArticleRepository

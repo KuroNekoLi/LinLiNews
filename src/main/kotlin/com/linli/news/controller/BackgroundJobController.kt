@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
 import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.Hidden
 
 /**
  * 背景任務控制器 - 展示正確的 JobRunr 使用方式
@@ -21,6 +22,7 @@ import io.swagger.v3.oas.annotations.media.Schema
 @RestController
 @RequestMapping("/api/background-jobs")
 @Profile("!prod")
+@Hidden
 @Tag(name = "背景任務測試 API", description = "測試用背景任務端點（僅限非生產環境）")
 class BackgroundJobController(
     private val backgroundJobService: BackgroundJobService

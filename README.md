@@ -63,6 +63,9 @@ curl -s "http://localhost:8080/api/articles?page=0&size=5&section=world_asia" | 
 
 # 取得 AI 處理過的文章（含繁中翻譯與教學解說）
 curl -s "http://localhost:8080/api/ai-articles/1" | jq .
+
+# 隨機取得 3 篇文章並自動進行 AI 處理（若尚未處理）
+curl -s "http://localhost:8080/api/ai-articles/random-with-processing?count=3" | jq .
 ```
 
 ---
@@ -76,6 +79,15 @@ curl -s "http://localhost:8080/api/ai-articles/1" | jq .
 
 所有端點都提供完整的繁體中文說明。
 
+**注意**：測試端點（如 `/api/ops/*`、`/api/background-jobs/*`）在生產環境的 Swagger 文件中會自動隱藏，且無法被調用。
+
+### AI 文章 API (`/api/ai-articles`)
+
+- `GET /api/ai-articles` - 列出已處理文章（分頁）
+- `GET /api/ai-articles/{articleId}` - 取得或處理單篇 AI 文章
+- `GET /api/ai-articles/random` - 隨機取得 n 篇 AI 文章（僅從已處理的文章中抽取）
+- `GET /api/ai-articles/random-with-processing` - 隨機取得 n 篇文章並自動進行 AI 處理（若尚未處理則即時處理）
+
 ---
 
 ## 主要功能
@@ -87,11 +99,14 @@ curl -s "http://localhost:8080/api/ai-articles/1" | jq .
 - 若 RSS 已含全文則直接保存；否則使用 Full-Text RSS 服務補齊
 - 文章去重（依 URL）
 
-### API 查詢功能
+### API 端點
 
-- 分頁查詢文章列表（可依來源與區塊過濾）
-- 單篇文章詳情（含 `contentHtml` 可直接渲染；`textContent` 為純文字）
-- 隨機抽取指定數量的文章
+#### 文章 API (`/api/articles`)
+
+- `GET /api/articles` - 分頁查詢文章列表
+- `GET /api/articles/{id}` - 單篇文章詳情
+- `GET /api/articles/random` - 隨機取得 n 篇文章
+- `POST /api/articles/{id}/ai/process` - 使用 GPT-4o 處理文章
 
 ### AI 教學功能
 
@@ -103,21 +118,6 @@ curl -s "http://localhost:8080/api/ai-articles/1" | jq .
     - 句型分析（雙語解說與例句）
     - 片語/成語講解（雙語解說與例句）
     - 閱讀理解測驗（4 選 1 選擇題，附中文詳解）
-
-### 常用端點（參考 Swagger）
-
-**文章 API (`/api/articles`)**
-
-- `GET /api/articles` - 分頁查詢文章列表
-- `GET /api/articles/{id}` - 單篇文章詳情
-- `GET /api/articles/random` - 隨機取得 n 篇文章
-- `POST /api/articles/{id}/ai/process` - 使用 GPT-4o 處理文章
-
-**AI 文章 API (`/api/ai-articles`)**
-
-- `GET /api/ai-articles` - 列出已處理文章（分頁）
-- `GET /api/ai-articles/{articleId}` - 取得或處理單篇 AI 文章
-- `GET /api/ai-articles/random` - 隨機取得 n 篇 AI 文章
 
 ---
 

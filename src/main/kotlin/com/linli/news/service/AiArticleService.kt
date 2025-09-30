@@ -67,6 +67,14 @@ class AiArticleService(
         return articleAiRepository.save(entity)
     }
 
+    /**
+     * 隨機取得 n 篇 AI 文章
+     *
+     * @param count 文章數量
+     * @param source 來源過濾
+     * @param section 區塊過濾
+     * @return Pair of (隨機文章清單, 可用文章總數)
+     */
     fun random(count: Int, source: String?, section: String?): Pair<List<ArticleAi>, Int> {
         val page = PageRequest.of(0, 10000)
         val pageData = when {
@@ -85,6 +93,65 @@ class AiArticleService(
         if (all.isEmpty()) return Pair(emptyList(), 0)
         val sampled = if (all.size <= count) all else all.shuffled().take(count)
         return Pair(sampled, all.size)
+    }
+
+    /**
+     * 隨機取得 n 篇文章並自動進行 AI 處理
+     *
+     * 從資料庫隨機抽取指定數量的文章，若文章尚未經 AI 處理，會自動進行處理並儲存。
+     * 此方法適用於需要確保取得的文章都有 AI 解析結果的場景。
+     *
+     * @param count 要取得的文章數量（實際數量可能少於請求數量，如處理失敗或無可用文章）
+     * @param source 來源名稱過濾（可選，例如 BBC、CNN）
+     * @param section 區塊名稱過濾（可選，例如 news、world、technology）
+     * @return Triple of (已處理的 AI 文章清單, 符合條件的可用文章總數, 本次新處理的文章數)
+     */
+    @Transactional
+    fun randomWithProcessing(count: Int, source: String?, section: String?): Triple<List<ArticleAi>, Int, Int> {
+        val page = PageRequest.of(0, 10000)
+        val allArticles = when {
+            !source.isNullOrBlank() && !section.isNullOrBlank() ->
+                articleRepository.findBySource_NameAndSource_Section(source, section, page).content
+
+            !source.isNullOrBlank() ->
+                articleRepository.findBySource_Name(source, page).content
+
+            !section.isNullOrBlank() ->
+                articleRepository.findBySource_Section(section, page).content
+
+            else -> articleRepository.findAll().toList()
+        }.filter { !it.contentHtml.isNullOrBlank() }
+
+        if (allArticles.isEmpty()) {
+            return Triple(emptyList(), 0, 0)
+        }
+
+        val selectedArticles = if (allArticles.size <= count) {
+            allArticles
+        } else {
+            allArticles.shuffled().take(count)
+        }
+
+        val result = mutableListOf<ArticleAi>()
+        var processedCount = 0
+
+        for (article in selectedArticles) {
+            try {
+                val existing = articleAiRepository.findByArticle_Id(article.id!!)
+                if (existing.isPresent) {
+                    result.add(existing.get())
+                } else {
+                    logger.info("Processing article ${article.id} with AI: ${article.title}")
+                    val aiArticle = getOrProcess(article.id!!)
+                    result.add(aiArticle)
+                    processedCount++
+                }
+            } catch (e: Exception) {
+                logger.error("Failed to process article ${article.id}: ${e.message}", e)
+            }
+        }
+
+        return Triple(result, allArticles.size, processedCount)
     }
 
     fun getOrProcessDto(articleId: Long): AiArticleDetail {
