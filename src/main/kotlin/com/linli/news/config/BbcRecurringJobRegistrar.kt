@@ -7,6 +7,13 @@ import org.springframework.stereotype.Component
 import java.time.Duration
 import jakarta.annotation.PostConstruct
 
+/**
+ * BBC 定期任務註冊器
+ *
+ * 在應用程式啟動時註冊 BBC 各區塊的定期匯入任務
+ *
+ * @property jobScheduler JobRunr 任務排程器
+ */
 @Component
 class BbcRecurringJobRegistrar(
     private val jobScheduler: JobScheduler
@@ -14,9 +21,11 @@ class BbcRecurringJobRegistrar(
     private val logger = LoggerFactory.getLogger(BbcRecurringJobRegistrar::class.java)
 
     /**
-     * 啟動時註冊 JobRunr 的定期任務，統一頻率設定：
-     * - 主分類：每 30 分鐘
-     * - 子分類：每 60 分鐘
+     * 啟動時註冊 JobRunr 的定期任務
+     *
+     * 統一頻率設定：
+     * - 主分類（news、world、uk、technology）：每 30 分鐘
+     * - 子分類（其他區塊）：每 60 分鐘
      */
     @PostConstruct
     fun registerRecurringJobs() {

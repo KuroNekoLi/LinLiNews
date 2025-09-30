@@ -3,6 +3,7 @@ package com.linli.news.controller
 import com.linli.news.domain.Article
 import com.linli.news.repository.ArticleRepository
 import com.linli.news.integration.FullTextRssClient
+import org.springframework.context.annotation.Profile
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
@@ -23,6 +24,18 @@ import com.linli.news.service.FeedImportService
 import com.linli.news.service.AiArticleService
 import com.linli.news.model.AiArticleDetail
 
+/**
+ * 文章資料結構
+ *
+ * @property id 文章 ID
+ * @property sourceName 來源名稱，例如 BBC、CNN
+ * @property section 來源區塊，例如 news、world、technology
+ * @property title 文章標題
+ * @property publishedAt 發布時間（ISO-8601 字串）
+ * @property originalUrl 原始文章連結（可跳轉到原站）
+ * @property contentHtml 可直接渲染的完整 HTML 內容
+ * @property textContent 自 HTML 萃取的純文字（便於搜尋/摘要）
+ */
 @Schema(name = "Article", description = "文章資料（所有端點統一結構）")
 data class ArticleDetail(
     @Schema(description = "文章ID")
@@ -43,6 +56,16 @@ data class ArticleDetail(
     val textContent: String?
 )
 
+/**
+ * 文章查詢控制器
+ *
+ * 提供文章列表、單篇詳情、隨機抽取與內容補齊等功能
+ *
+ * @property articleRepository 文章資料庫存取物件
+ * @property fullTextRssClient Full-Text RSS 客戶端
+ * @property feedImportService RSS 匯入服務
+ * @property aiArticleService AI 文章服務
+ */
 @RestController
 @RequestMapping("/api/articles")
 @Tag(name = "文章 API", description = "提供文章列表、單篇詳情、隨機抽取與內容補齊等功能")
@@ -53,12 +76,13 @@ class ArticleQueryController(
     private val aiArticleService: AiArticleService
 ) {
     /**
-     * 分頁查詢最新文章，可依 `source` 與 `section` 過濾。
+     * 分頁查詢最新文章，可依來源與區塊過濾
      *
      * @param page 頁碼（0 起算）
      * @param size 每頁筆數（預設 20）
-     * @param source 來源（如 CNN）
-     * @param section 區塊（如 world/technology）
+     * @param source 來源過濾（如 BBC、CNN）
+     * @param section 區塊過濾（如 world、technology）
+     * @return 文章分頁資料
      */
     @GetMapping
     @Operation(
@@ -102,7 +126,10 @@ class ArticleQueryController(
     }
 
     /**
-     * 取得單篇文章詳細資訊，包括完整的HTML內容
+     * 取得單篇文章詳細資訊
+     *
+     * @param id 文章 ID
+     * @return 文章詳細資料
      */
     @GetMapping("/{id}")
     @Operation(
@@ -130,10 +157,17 @@ class ArticleQueryController(
     }
 
     /**
-     * 為指定文章補充完整的HTML內容
+     * 為指定文章補充完整的 HTML 內容
+     *
+     * @param id 文章 ID
+     * @return 補充結果
      */
     @PostMapping("/{id}/fetch-content")
-    @Operation(summary = "補齊指定文章的全文內容", description = "使用 Full-Text RSS 提取內容並更新資料庫")
+    @Profile("!prod")
+    @Operation(
+        summary = "[測試] 補齊指定文章的全文內容",
+        description = "使用 Full-Text RSS 提取內容並更新資料庫（僅限非生產環境）"
+    )
     @Transactional
     fun fetchFullContent(@PathVariable id: Long): ResponseEntity<Map<String, Any>> {
         val article = articleRepository.findById(id).orElse(null)
@@ -165,10 +199,16 @@ class ArticleQueryController(
     }
 
     /**
-     * 批次為所有沒有完整內容的文章補充HTML內容
+     * 批次為所有沒有完整內容的文章補充 HTML 內容
+     *
+     * @return 批次處理結果
      */
     @PostMapping("/fetch-all-missing-content")
-    @Operation(summary = "批次補齊缺少全文的文章", description = "找出所有 contentHtml 為空的文章並嘗試補齊")
+    @Profile("!prod")
+    @Operation(
+        summary = "[測試] 批次補齊缺少全文的文章",
+        description = "找出所有 contentHtml 為空的文章並嘗試補齊（僅限非生產環境）"
+    )
     @Transactional
     fun fetchAllMissingContent(): ResponseEntity<Map<String, Any>> {
         // 查找所有沒有完整內容的文章
@@ -211,8 +251,9 @@ class ArticleQueryController(
      * 隨機取得 n 篇有完整內容的文章
      *
      * @param count 要取得的文章數量（預設 5 篇，最多 20 篇）
-     * @param source 可選：指定來源過濾（如 BBC、CNN）
-     * @param section 可選：指定區塊過濾（如 world、technology）
+     * @param source 來源過濾（如 BBC、CNN）
+     * @param section 區塊過濾（如 world、technology）
+     * @return 隨機文章清單與統計資訊
      */
     @GetMapping("/random")
     @Operation(
@@ -308,9 +349,15 @@ class ArticleQueryController(
 
     /**
      * 清理無效文章（如報紙頭版合集、音頻視頻連結等）
+     *
+     * @return 清理結果統計
      */
     @PostMapping("/cleanup-invalid-articles")
-    @Operation(summary = "清理無效文章", description = "移除報紙頭版合集、音頻/影片入口等非新聞文章")
+    @Profile("!prod")
+    @Operation(
+        summary = "[管理] 清理無效文章",
+        description = "移除報紙頭版合集、音頻/影片入口等非新聞文章（僅限非生產環境）"
+    )
     @Transactional
     fun cleanupInvalidArticles(): ResponseEntity<Map<String, Any>> {
         val invalidPatterns = listOf(
@@ -355,10 +402,17 @@ class ArticleQueryController(
         )
     }
 
+    /**
+     * 立即匯入 BBC RSS（用於測試排程的來源）
+     *
+     * @param section 要匯入的 BBC 區塊/子分類
+     * @return 匯入結果
+     */
     @PostMapping("/admin/import-bbc")
+    @Profile("!prod")
     @Operation(
         summary = "[管理] 立即匯入 BBC RSS（用於測試排程的來源）",
-        description = "依 section 觸發對應 BBC RSS 的一次性匯入。支援：news、world、uk、technology、business、health、science_and_environment、entertainment_and_arts、politics、education、world_africa、world_asia、world_europe、world_middle_east、world_us_and_canada、world_latin_america"
+        description = "依 section 觸發對應 BBC RSS 的一次性匯入。支援：news、world、uk、technology、business、health、science_and_environment、entertainment_and_arts、politics、education、world_africa、world_asia、world_europe、world_middle_east、world_us_and_canada、world_latin_america（僅限非生產環境）"
     )
     @Transactional
     fun adminImportBbc(
@@ -409,6 +463,12 @@ class ArticleQueryController(
         )
     }
 
+    /**
+     * 使用 GPT-4o 解析並落地後回傳（統一文章物件）
+     *
+     * @param id 文章 ID
+     * @return AI 處理後的文章詳細資料
+     */
     @PostMapping("/{id}/ai/process")
     @Operation(
         summary = "使用 GPT-4o 解析並落地後回傳（統一文章物件）",
@@ -431,6 +491,12 @@ class ArticleQueryController(
         }
     }
 
+    /**
+     * 從 HTML 中萃取純文字內容
+     *
+     * @param html HTML 內容
+     * @return 純文字內容（移除所有 HTML 標籤）
+     */
     private fun extractTextFromHtml(html: String?): String? {
         if (html == null) {
             return null
