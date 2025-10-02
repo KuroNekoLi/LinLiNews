@@ -231,6 +231,83 @@ class AiArticleProcessorService(
         }
     }
 
+    fun optimizeHtml(title: String?, originalHtml: String): String {
+        require(!apiKey.isNullOrBlank()) { "OPENAI_API_KEY / openai.api-key is required" }
+        if (originalHtml.isBlank()) {
+            throw IllegalArgumentException("Article HTML content is empty; cannot optimize with AI")
+        }
+
+        val systemPrompt = """
+    你是專業的英文新聞 HTML 清理助手。
+    任務：
+    1) 解析提供的全文 HTML，萃取並保留與標題、段落內容高度相關的正文。
+    2) 移除導覽列、頁尾、側邊欄、廣告、推薦閱讀、訂閱提示、社群按鈕、評論區、追蹤 script 等與正文無關的元素。
+    3) 僅保留必要的結構標籤，例如 article、section、h2-h6、p、blockquote、ul/ol/li、figure、figcaption、img。
+    4) 移除多餘的 class、style、data-* 屬性，保留語意元素與必要的 alt 屬性。
+    5) **只輸出 HTML 片段（fragment），不要包含 <!doctype>、<html>、<head>、<body> 等外層標籤。**
+    6) **不要添加任何 CSS 樣式，讓客戶端負責樣式渲染。**
+    僅輸出 JSON 物件，不要加入額外說明文字。
+""".trimIndent()
+
+        val userPrompt = """
+    請清理下列文章 HTML，只保留與新聞主題直接相關的正文內容：
+    標題：${title ?: "(no title)"}
+    原始 HTML：
+    ```html
+    $originalHtml
+    ```
+    
+    請產生 JSON：
+    {
+      "optimized_html": string
+    }
+    
+    產出要求：
+    - **只輸出 HTML 片段，從 <article> 或第一個內容標籤開始**
+    - **不要包含 <!doctype>、<html>、<head>、<style>、<body> 等標籤**
+    - 以語意標籤包裹正文：<article>、<section>、<h2>/<h3>、<p>、<ul>/<ol>、<blockquote>
+    - 僅保留與內容相關的媒體（figure、img、figcaption），確保 img 具有 alt 屬性
+    - 移除所有 class、style、data-* 屬性
+    - 移除與內文無關或重複的元素、追蹤程式碼
+    - 保持內容的原始順序與完整性
+""".trimIndent()
+
+
+        val body = mapOf(
+            "model" to model,
+            "temperature" to 0.1,
+            "max_tokens" to maxTokens,
+            "response_format" to mapOf("type" to "json_object"),
+            "messages" to listOf(
+                mapOf("role" to "system", "content" to systemPrompt),
+                mapOf("role" to "user", "content" to userPrompt)
+            )
+        )
+
+        logger.info("[AI] Requesting OpenAI model='${model}' for HTML optimization (title='${title ?: "(no title)"}')")
+        val responseStr = postChatCompletions(body, operation = "optimizeHtml")
+        logger.info("[AI] Raw optimizeHtml response (first 400 chars): ${responseStr.take(400)}")
+
+        val root = objectMapper.readTree(responseStr)
+        val content = root.path("choices").path(0).path("message").path("content").asText()
+        if (content.isBlank()) {
+            logger.error("OpenAI optimizeHtml 回傳內容為空，原始: $responseStr")
+            throw IllegalStateException("OpenAI optimizeHtml 回傳內容為空")
+        }
+
+        logger.info("[AI] optimizeHtml content length: ${content.length} chars")
+        logger.debug("[AI] optimizeHtml parsed JSON (first 400 chars): ${content.take(400)}")
+
+        val optimizedNode = objectMapper.readTree(content)
+        val optimizedHtml = optimizedNode.path("optimized_html").asText(null)
+        if (optimizedHtml.isNullOrBlank()) {
+            logger.error("[AI] optimizeHtml JSON 缺少 optimized_html 欄位或為空")
+            throw IllegalStateException("AI 回應缺少 optimized_html 欄位")
+        }
+
+        return optimizedHtml
+    }
+
     // 只生成 explanation（補救用）：輸入標題與英文純文字，回傳 { "explanation": { ...固定結構... } }
     fun generateExplanationOnly(title: String?, cleanedText: String): JsonNode {
         require(!apiKey.isNullOrBlank()) { "OPENAI_API_KEY / openai.api-key is required" }

@@ -50,6 +50,12 @@ class AiArticleService(
             throw ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, e.message, e)
         }
 
+        val optimizedHtml = try {
+            aiProcessor.optimizeHtml(article.title, article.contentHtml!!)
+        } catch (e: AiQuotaException) {
+            throw ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, e.message, e)
+        }
+
         val primaryExplanationNode = json.path("explanation")
         val hasPrimaryExplanation =
             !primaryExplanationNode.isMissingNode && !primaryExplanationNode.isNull && primaryExplanationNode.isObject
@@ -59,7 +65,7 @@ class AiArticleService(
             article = article,
             title = json.path("title").asText(null),
             titleZh = json.path("title_zh").asText(null),
-            cleanedHtml = null, // 不再產生 cleaned_html
+            cleanedHtml = optimizedHtml,
             cleanedText = json.path("cleaned_text").asText(null),
             cleanedTextZh = json.path("cleaned_text_zh").asText(null),
             explanation = explanationJson
@@ -175,12 +181,18 @@ class AiArticleService(
             throw ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, e.message, e)
         }
 
+        val optimizedHtml = try {
+            aiProcessor.optimizeHtml(article.title, article.contentHtml!!)
+        } catch (e: AiQuotaException) {
+            throw ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, e.message, e)
+        }
+
         val entity = articleAiRepository.findByArticle_Id(articleId).orElse(null)
             ?: ArticleAi(article = article)
 
         entity.title = json.path("title").asText(null)
         entity.titleZh = json.path("title_zh").asText(null)
-        entity.cleanedHtml = null // 不再產生 cleaned_html
+        entity.cleanedHtml = optimizedHtml
         entity.cleanedText = json.path("cleaned_text").asText(null)
         entity.cleanedTextZh = json.path("cleaned_text_zh").asText(null)
         val expNode = json.path("explanation")
@@ -265,7 +277,7 @@ class AiArticleService(
             title = article.title,
             publishedAt = article.publishedAt?.toString(),
             originalUrl = article.originalUrl,
-            contentHtml = article.contentHtml,
+            contentHtml = aiArticle.cleanedHtml ?: article.contentHtml,
             textContent = extractTextFromHtml(article.contentHtml),
 
             // AI 欄位

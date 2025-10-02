@@ -213,6 +213,7 @@ class AiArticleServiceTest {
         every { articleAiRepository.findByArticle_Id(1) } returns Optional.empty()
         every { articleRepository.findById(1) } returns Optional.of(article)
         every { aiProcessor.process("Test Title", any<String>()) } returns aiResponse
+        every { aiProcessor.optimizeHtml("Test Title", any()) } returns "<article><p>Optimized</p></article>"
         every { articleAiRepository.save(any<ArticleAi>()) } answers { firstArg() }
 
         val (result, total, processedCount) = service.randomWithProcessing(1, null, null)
@@ -220,6 +221,7 @@ class AiArticleServiceTest {
         assertEquals(1, processedCount)
         assertTrue(result.isNotEmpty())
         verify(exactly = 1) { aiProcessor.process(any<String>(), any<String>()) }
+        verify(exactly = 1) { aiProcessor.optimizeHtml(any(), any()) }
         verify(exactly = 1) { articleAiRepository.save(any<ArticleAi>()) }
     }
 
@@ -248,6 +250,7 @@ class AiArticleServiceTest {
         every { articleRepository.findById(1) } throws RuntimeException("AI 處理失敗")
         every { articleRepository.findById(2) } returns Optional.of(article2)
         every { aiProcessor.process("Title 2", any<String>()) } returns aiResponse
+        every { aiProcessor.optimizeHtml("Title 2", any()) } returns "<article><p>Optimized 2</p></article>"
         every { articleAiRepository.save(any<ArticleAi>()) } answers {
             firstArg<ArticleAi>().apply { id = 100 }
         }
@@ -287,8 +290,11 @@ class AiArticleServiceTest {
     @Test
     fun `should return existing AI article without reprocessing`() {
         val source = ArticleSource(name = "BBC", rssUrl = "https://test.com/rss", section = "news")
-        val article = Article(source = source, originalUrl = "https://test.com/1", contentHtml = "<p>Content</p>")
-            .apply { id = 1; title = "Title" }
+        val article = Article(
+            source = source,
+            originalUrl = "https://test.com/1",
+            contentHtml = "<p>Content</p>"
+        ).apply { id = 1; title = "Title" }
         val existingAi = ArticleAi(article = article).apply { id = 99; titleZh = "已處理標題" }
 
         every { articleAiRepository.findByArticle_Id(1) } returns Optional.of(existingAi)
@@ -323,6 +329,7 @@ class AiArticleServiceTest {
         every { articleAiRepository.findByArticle_Id(1) } returns Optional.empty()
         every { articleRepository.findById(1) } returns Optional.of(article)
         every { aiProcessor.process("Test Title", any<String>()) } returns aiResponse
+        every { aiProcessor.optimizeHtml("Test Title", any()) } returns "<article><p>Optimized</p></article>"
         every { articleAiRepository.save(any<ArticleAi>()) } answers {
             firstArg<ArticleAi>().apply { id = 100 }
         }
@@ -332,6 +339,7 @@ class AiArticleServiceTest {
         assertNotNull(result.id)
         assertEquals("測試標題", result.titleZh)
         verify(exactly = 1) { aiProcessor.process(any<String>(), any<String>()) }
+        verify(exactly = 1) { aiProcessor.optimizeHtml(any(), any()) }
         verify(exactly = 1) { articleAiRepository.save(any<ArticleAi>()) }
     }
 }
