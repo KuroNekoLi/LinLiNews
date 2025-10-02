@@ -85,7 +85,7 @@ class AiArticleProcessorService(
     }
 
     fun process(title: String?, textContent: String?): JsonNode {
-        require(!apiKey.isNullOrBlank()) { "OPENAI_API_KEY / openai.api-key is required" }
+        require(apiKey.isNotBlank()) { "OPENAI_API_KEY / openai.api-key is required" }
         if (textContent.isNullOrBlank()) {
             throw IllegalArgumentException("Article text content is empty; cannot process with AI")
         }
@@ -100,6 +100,10 @@ class AiArticleProcessorService(
                - Grammar（重點規則與雙語解說、雙語例句）應該要有一點難度的文法
                - Sentence patterns / Phrases / Idioms（雙語解說與雙語例句）不要太簡單
                - Comprehension Q&A（4 題，題目與答案也請提供中英文）
+             4) 產生雙語摘要：
+                - 英文摘要：使用條列式（至少 3 點），涵蓋文章的關鍵資訊與背景
+                - 中文摘要：使用條列式（至少 3 點），與英文摘要對應，補充必要的上下文
+                - 摘要語氣客觀中立，避免過度濃縮成單一句
             僅輸出 JSON 物件，不要多餘文字。
         """.trimIndent()
 
@@ -117,6 +121,8 @@ class AiArticleProcessorService(
                "title_zh": string,
                "cleaned_text": string,
                "cleaned_text_zh": string,  // 需良好分段，每段以\n\n分隔
+               "summary_en": string,
+               "summary_zh": string,
                "explanation": {
                  "vocabulary": [
                    {
@@ -172,6 +178,9 @@ class AiArticleProcessorService(
             - 不要出是非題；
             - 選項需具迷惑性，不可直接複製原句；
             - 優先考察同義字、語境推論、代名詞指涉、時態語氣辨識、轉折語義等。
+            摘要格式：
+            - 使用 Markdown 風格條列，每一點以 "- " 起始
+            - 確保每一語言至少三點摘要
         """.trimIndent()
 
         val body = mapOf(
@@ -231,47 +240,57 @@ class AiArticleProcessorService(
         }
     }
 
-    fun optimizeHtml(title: String?, originalHtml: String): String {
+    fun optimizeHtml(
+        title: String?,
+        originalHtml: String,
+        targetLanguage: HtmlOptimizationLanguage = HtmlOptimizationLanguage.ENGLISH
+    ): HtmlOptimizationResult {
         require(!apiKey.isNullOrBlank()) { "OPENAI_API_KEY / openai.api-key is required" }
         if (originalHtml.isBlank()) {
             throw IllegalArgumentException("Article HTML content is empty; cannot optimize with AI")
         }
 
         val systemPrompt = """
-    你是專業的英文新聞 HTML 清理助手。
-    任務：
-    1) 解析提供的全文 HTML，萃取並保留與標題、段落內容高度相關的正文。
-    2) 移除導覽列、頁尾、側邊欄、廣告、推薦閱讀、訂閱提示、社群按鈕、評論區、追蹤 script 等與正文無關的元素。
-    3) 僅保留必要的結構標籤，例如 article、section、h2-h6、p、blockquote、ul/ol/li、figure、figcaption、img。
-    4) 移除多餘的 class、style、data-* 屬性，保留語意元素與必要的 alt 屬性。
-    5) **只輸出 HTML 片段（fragment），不要包含 <!doctype>、<html>、<head>、<body> 等外層標籤。**
-    6) **不要添加任何 CSS 樣式，讓客戶端負責樣式渲染。**
-    僅輸出 JSON 物件，不要加入額外說明文字。
-""".trimIndent()
+            你是專業的英文新聞 HTML 清理助手。
+            任務：
+            1) 解析提供的全文 HTML，萃取並保留與標題、段落內容高度相關的正文。
+            2) 移除導覽列、頁尾、側邊欄、廣告、推薦閱讀、訂閱提示、社群按鈕、評論區、追蹤 script 等與正文無關的元素。
+            3) 僅保留必要的結構標籤，例如 article、section、h2-h6、p、blockquote、ul/ol/li、figure、figcaption、img。
+            4) 移除多餘的 class、style、data-* 屬性，保留語意元素與必要的 alt 屬性。
+            5) **移除所有超連結 <a>，僅保留文字內容（保留原句，不要刪除文字）。**
+            6) **只輸出 HTML 片段（fragment），不要包含 <!doctype>、<html>、<head>、<body> 等外層標籤。**
+            7) **不要添加任何 CSS 樣式，讓客戶端負責樣式渲染。**
+            8) 產生兩份輸出：
+               - `optimized_html`：保留英文原文的最佳化 HTML
+               - `optimized_zh_html`：在結構不變的情況下翻譯為繁體中文，保留專有名詞、數字與時間資訊
+            僅輸出 JSON 物件，不要加入額外說明文字。
+        """.trimIndent()
 
         val userPrompt = """
-    請清理下列文章 HTML，只保留與新聞主題直接相關的正文內容：
-    標題：${title ?: "(no title)"}
-    原始 HTML：
-    ```html
-    $originalHtml
-    ```
-    
-    請產生 JSON：
-    {
-      "optimized_html": string
-    }
-    
-    產出要求：
-    - **只輸出 HTML 片段，從 <article> 或第一個內容標籤開始**
-    - **不要包含 <!doctype>、<html>、<head>、<style>、<body> 等標籤**
-    - 以語意標籤包裹正文：<article>、<section>、<h2>/<h3>、<p>、<ul>/<ol>、<blockquote>
-    - 僅保留與內容相關的媒體（figure、img、figcaption），確保 img 具有 alt 屬性
-    - 移除所有 class、style、data-* 屬性
-    - 移除與內文無關或重複的元素、追蹤程式碼
-    - 保持內容的原始順序與完整性
-""".trimIndent()
+            請清理下列文章 HTML，只保留與新聞主題直接相關的正文內容：
+            標題：${title ?: "(no title)"}
+            原始 HTML：
+            ```html
+            $originalHtml
+            ```
 
+            請產生 JSON：
+            {
+              "optimized_html": string,
+              "optimized_zh_html": string
+            }
+
+            產出要求：
+            - **移除所有 <a> 標籤，保留其中的文字內容**
+            - **只輸出 HTML 片段，從 <article> 或第一個內容標籤開始**
+            - **不要包含 <!doctype>、<html>、<head>、<style>、<body> 等標籤**
+            - 以語意標籤包裹正文：<article>、<section>、<h2>/<h3>、<p>、<ul>/<ol>、<blockquote>
+            - 僅保留與內容相關的媒體（figure、img、figcaption），確保 img 具有 alt 屬性
+            - 移除所有 class、style、data-* 屬性
+            - 移除與內文無關或重複的元素、追蹤程式碼
+            - 保持內容的原始順序與完整性
+            - `optimized_html` 維持英文原文；`optimized_zh_html` 需翻譯為繁體中文並保持對應段落
+        """.trimIndent()
 
         val body = mapOf(
             "model" to model,
@@ -301,12 +320,26 @@ class AiArticleProcessorService(
         val optimizedNode = objectMapper.readTree(content)
         val optimizedHtml = optimizedNode.path("optimized_html").asText(null)
         if (optimizedHtml.isNullOrBlank()) {
-            logger.error("[AI] optimizeHtml JSON 缺少 optimized_html 欄位或為空")
+            logger.error("[AI] optimizeHtml JSON 缺少 optimized_html 欄位或為空，target=${targetLanguage}")
             throw IllegalStateException("AI 回應缺少 optimized_html 欄位")
         }
 
-        return optimizedHtml
+        val optimizedZhHtml = optimizedNode.path("optimized_zh_html").asText(null)
+        return HtmlOptimizationResult(
+            optimizedHtml = optimizedHtml,
+            optimizedZhHtml = optimizedZhHtml
+        )
     }
+
+    enum class HtmlOptimizationLanguage(val instruction: String) {
+        ENGLISH("保留英文原文內容"),
+        TRADITIONAL_CHINESE("全文翻譯為繁體中文，保留原段落結構與語意")
+    }
+
+    data class HtmlOptimizationResult(
+        val optimizedHtml: String,
+        val optimizedZhHtml: String?
+    )
 
     // 只生成 explanation（補救用）：輸入標題與英文純文字，回傳 { "explanation": { ...固定結構... } }
     fun generateExplanationOnly(title: String?, cleanedText: String): JsonNode {

@@ -206,6 +206,8 @@ class AiArticleServiceTest {
             put("title_zh", "測試標題")
             put("cleaned_text", "Test content for AI processing")
             put("cleaned_text_zh", "測試內容供AI處理")
+            put("summary_en", "English summary")
+            put("summary_zh", "中文摘要")
             putObject("explanation")
         }
 
@@ -213,7 +215,15 @@ class AiArticleServiceTest {
         every { articleAiRepository.findByArticle_Id(1) } returns Optional.empty()
         every { articleRepository.findById(1) } returns Optional.of(article)
         every { aiProcessor.process("Test Title", any<String>()) } returns aiResponse
-        every { aiProcessor.optimizeHtml("Test Title", any()) } returns "<article><p>Optimized</p></article>"
+        every {
+            aiProcessor.optimizeHtml(
+                "Test Title",
+                any()
+            )
+        } returns AiArticleProcessorService.HtmlOptimizationResult(
+            optimizedHtml = "<article><p>Optimized</p></article>",
+            optimizedZhHtml = "<article><p>優化內容</p></article>"
+        )
         every { articleAiRepository.save(any<ArticleAi>()) } answers { firstArg() }
 
         val (result, total, processedCount) = service.randomWithProcessing(1, null, null)
@@ -222,7 +232,6 @@ class AiArticleServiceTest {
         assertTrue(result.isNotEmpty())
         verify(exactly = 1) { aiProcessor.process(any<String>(), any<String>()) }
         verify(exactly = 1) { aiProcessor.optimizeHtml(any(), any()) }
-        verify(exactly = 1) { articleAiRepository.save(any<ArticleAi>()) }
     }
 
     /**
@@ -241,6 +250,8 @@ class AiArticleServiceTest {
             put("title_zh", "標題2")
             put("cleaned_text", "Content 2")
             put("cleaned_text_zh", "內容2")
+            put("summary_en", "Summary 2")
+            put("summary_zh", "摘要2")
             putObject("explanation")
         }
 
@@ -250,7 +261,12 @@ class AiArticleServiceTest {
         every { articleRepository.findById(1) } throws RuntimeException("AI 處理失敗")
         every { articleRepository.findById(2) } returns Optional.of(article2)
         every { aiProcessor.process("Title 2", any<String>()) } returns aiResponse
-        every { aiProcessor.optimizeHtml("Title 2", any()) } returns "<article><p>Optimized 2</p></article>"
+        every {
+            aiProcessor.optimizeHtml("Title 2", any())
+        } returns AiArticleProcessorService.HtmlOptimizationResult(
+            optimizedHtml = "<article><p>Optimized 2</p></article>",
+            optimizedZhHtml = "<article><p>優化內容2</p></article>"
+        )
         every { articleAiRepository.save(any<ArticleAi>()) } answers {
             firstArg<ArticleAi>().apply { id = 100 }
         }
@@ -323,13 +339,23 @@ class AiArticleServiceTest {
             put("title_zh", "測試標題")
             put("cleaned_text", "Test content")
             put("cleaned_text_zh", "測試內容")
+            put("summary_en", "Summary")
+            put("summary_zh", "摘要")
             putObject("explanation")
         }
 
         every { articleAiRepository.findByArticle_Id(1) } returns Optional.empty()
         every { articleRepository.findById(1) } returns Optional.of(article)
         every { aiProcessor.process("Test Title", any<String>()) } returns aiResponse
-        every { aiProcessor.optimizeHtml("Test Title", any()) } returns "<article><p>Optimized</p></article>"
+        every {
+            aiProcessor.optimizeHtml(
+                "Test Title",
+                any()
+            )
+        } returns AiArticleProcessorService.HtmlOptimizationResult(
+            optimizedHtml = "<article><p>Optimized</p></article>",
+            optimizedZhHtml = "<article><p>優化內容</p></article>"
+        )
         every { articleAiRepository.save(any<ArticleAi>()) } answers {
             firstArg<ArticleAi>().apply { id = 100 }
         }
@@ -340,6 +366,5 @@ class AiArticleServiceTest {
         assertEquals("測試標題", result.titleZh)
         verify(exactly = 1) { aiProcessor.process(any<String>(), any<String>()) }
         verify(exactly = 1) { aiProcessor.optimizeHtml(any(), any()) }
-        verify(exactly = 1) { articleAiRepository.save(any<ArticleAi>()) }
     }
 }

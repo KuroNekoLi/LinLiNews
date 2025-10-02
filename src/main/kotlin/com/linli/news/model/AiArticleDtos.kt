@@ -25,13 +25,25 @@ data class AiArticleDetail(
     val originalUrl: String,
     @field:Schema(description = "完整 HTML 內容（原始）")
     val contentHtml: String?,
-    @field:Schema(description = "自 HTML 萃取的純文字（原始）")
-    val textContent: String?,
+    @field:JsonProperty("optimized_zh_html")
+    @field:Schema(description = "AI 產生的繁體中文 HTML 內容")
+    val optimizedZhHtml: String?,
+    @field:JsonProperty("optimized_html")
+    @field:Schema(description = "AI 產生的英文 HTML 內容")
+    val optimizedHtml: String?,
 
     // AI 產出欄位
     @field:JsonProperty("title_zh")
     @Schema(description = "AI 產生的中文標題")
     val titleZh: String?,
+
+    @field:JsonProperty("summary_en")
+    @Schema(description = "AI 產生的英文摘要")
+    val summaryEn: String?,
+
+    @field:JsonProperty("summary_zh")
+    @Schema(description = "AI 產生的中文摘要")
+    val summaryZh: String?,
 
     @field:JsonProperty("cleaned_text")
     @Schema(description = "AI 清理後的英文純文字")

@@ -39,7 +39,6 @@ class AiArticleService(
         val article = articleRepository.findById(articleId).orElseThrow()
         require(!article.contentHtml.isNullOrBlank()) { "Article has no contentHtml; please fetch full content first" }
 
-        // 使用純文字內容而非 HTML，大幅減少 token
         val textContent = extractTextFromHtml(article.contentHtml)
         require(!textContent.isNullOrBlank()) { "Article textContent is empty after HTML extraction" }
 
@@ -50,7 +49,7 @@ class AiArticleService(
             throw ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, e.message, e)
         }
 
-        val optimizedHtml = try {
+        val optimizedResult = try {
             aiProcessor.optimizeHtml(article.title, article.contentHtml!!)
         } catch (e: AiQuotaException) {
             throw ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, e.message, e)
@@ -65,10 +64,13 @@ class AiArticleService(
             article = article,
             title = json.path("title").asText(null),
             titleZh = json.path("title_zh").asText(null),
-            cleanedHtml = optimizedHtml,
+            optimizedHtml = optimizedResult.optimizedHtml,
             cleanedText = json.path("cleaned_text").asText(null),
             cleanedTextZh = json.path("cleaned_text_zh").asText(null),
-            explanation = explanationJson
+            summaryEn = json.path("summary_en").asText(null),
+            summaryZh = json.path("summary_zh").asText(null),
+            explanation = explanationJson,
+            optimizedZhHtml = optimizedResult.optimizedZhHtml
         )
         return articleAiRepository.save(entity)
     }
@@ -171,7 +173,6 @@ class AiArticleService(
         val article = articleRepository.findById(articleId).orElseThrow()
         require(!article.contentHtml.isNullOrBlank()) { "Article has no contentHtml; please fetch full content first" }
 
-        // 使用純文字內容而非 HTML，大幅減少 token
         val textContent = extractTextFromHtml(article.contentHtml)
         require(!textContent.isNullOrBlank()) { "Article textContent is empty after HTML extraction" }
 
@@ -181,7 +182,7 @@ class AiArticleService(
             throw ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, e.message, e)
         }
 
-        val optimizedHtml = try {
+        val optimizedResult = try {
             aiProcessor.optimizeHtml(article.title, article.contentHtml!!)
         } catch (e: AiQuotaException) {
             throw ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, e.message, e)
@@ -192,7 +193,10 @@ class AiArticleService(
 
         entity.title = json.path("title").asText(null)
         entity.titleZh = json.path("title_zh").asText(null)
-        entity.cleanedHtml = optimizedHtml
+        entity.optimizedHtml = optimizedResult.optimizedHtml
+        entity.optimizedZhHtml = optimizedResult.optimizedZhHtml
+        entity.summaryEn = json.path("summary_en").asText(null)
+        entity.summaryZh = json.path("summary_zh").asText(null)
         entity.cleanedText = json.path("cleaned_text").asText(null)
         entity.cleanedTextZh = json.path("cleaned_text_zh").asText(null)
         val expNode = json.path("explanation")
@@ -270,18 +274,18 @@ class AiArticleService(
         }
 
         return AiArticleDetail(
-            // 原文章欄位
             id = articleId,
             sourceName = article.source.name,
             section = article.source.section,
             title = article.title,
             publishedAt = article.publishedAt?.toString(),
             originalUrl = article.originalUrl,
-            contentHtml = aiArticle.cleanedHtml ?: article.contentHtml,
-            textContent = extractTextFromHtml(article.contentHtml),
-
-            // AI 欄位
+            contentHtml = aiArticle.optimizedHtml ?: article.contentHtml,
+            optimizedHtml = aiArticle.optimizedHtml,
+            optimizedZhHtml = aiArticle.optimizedZhHtml,
             titleZh = aiArticle.titleZh,
+            summaryEn = aiArticle.summaryEn,
+            summaryZh = aiArticle.summaryZh,
             cleanedText = aiArticle.cleanedText,
             cleanedTextZh = aiArticle.cleanedTextZh,
             explanation = explanation

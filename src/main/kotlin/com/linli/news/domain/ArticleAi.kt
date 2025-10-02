@@ -11,9 +11,12 @@ import java.time.OffsetDateTime
  * @property article 關聯的原始文章（一對一）
  * @property title 文章標題（AI 可能的調整版本）
  * @property titleZh 中文標題（AI 翻譯）
- * @property cleanedHtml 清理後的 HTML 內容（已移除廣告、導航等）
+ * @property optimizedHtml 最佳化後的英文 HTML 內容
+ * @property optimizedZhHtml 最佳化後的繁體中文 HTML 內容
  * @property cleanedText 清理後的純文字內容（英文）
  * @property cleanedTextZh 清理後的純文字內容（繁體中文翻譯）
+ * @property summaryEn AI 產生的英文摘要
+ * @property summaryZh AI 產生的中文摘要
  * @property explanation 教學解說（JSON 格式，包含單字、文法、句型等）
  * @property id AI 文章唯一識別碼
  * @property createdAt 建立時間
@@ -39,9 +42,13 @@ class ArticleAi(
     @Column(name = "title_zh", length = 512)
     var titleZh: String? = null,
 
-    /** 清理後的 HTML 內容（LONGTEXT 欄位） */
-    @Column(name = "cleaned_html", columnDefinition = "LONGTEXT")
-    var cleanedHtml: String? = null,
+    /** 最佳化後的 HTML 內容（英文，LONGTEXT 欄位） */
+    @Column(name = "optimized_html", columnDefinition = "LONGTEXT")
+    var optimizedHtml: String? = null,
+
+    /** 清理後的 HTML 內容（繁體中文，LONGTEXT 欄位） */
+    @Column(name = "optimized_zh_html", columnDefinition = "LONGTEXT")
+    var optimizedZhHtml: String? = null,
 
     /** 清理後的純文字內容（英文，LONGTEXT 欄位） */
     @Column(name = "cleaned_text", columnDefinition = "LONGTEXT")
@@ -50,6 +57,14 @@ class ArticleAi(
     /** 清理後的純文字內容（繁體中文翻譯，LONGTEXT 欄位） */
     @Column(name = "cleaned_text_zh", columnDefinition = "LONGTEXT")
     var cleanedTextZh: String? = null,
+
+    /** 英文摘要（AI 產生，LONGTEXT 欄位） */
+    @Column(name = "summary_en", columnDefinition = "LONGTEXT")
+    var summaryEn: String? = null,
+
+    /** 中文摘要（AI 產生，LONGTEXT 欄位） */
+    @Column(name = "summary_zh", columnDefinition = "LONGTEXT")
+    var summaryZh: String? = null,
 
     /** 教學解說（JSON 格式，包含單字、文法、句型、片語、閱讀測驗等） */
     @Column(name = "explanation", columnDefinition = "JSON")

@@ -11,7 +11,6 @@ import org.springframework.context.annotation.Profile
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
 import org.springframework.web.bind.annotation.*
-import java.util.regex.Pattern
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.springframework.http.ResponseEntity
@@ -37,8 +36,6 @@ class AiArticleController(
     private val objectMapper = ObjectMapper()
         .registerKotlinModule()
         .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-
-    private val htmlTagPattern: Pattern = Pattern.compile("<[^>]*>")
 
     /**
      * 列出已處理文章（分頁）
@@ -291,7 +288,6 @@ class AiArticleController(
     private fun toDto(ai: ArticleAi): AiArticleDetail {
         val a = ai.article
         val articleId = requireNotNull(a.id) { "Article must have an ID" }
-        val text = a.contentHtml?.let { htmlTagPattern.matcher(it).replaceAll("") }
         val explanationObj: Explanation? = ai.explanation?.let { explanationJson ->
             try {
                 val parsed = objectMapper.readValue(explanationJson, Explanation::class.java)
@@ -311,8 +307,11 @@ class AiArticleController(
             publishedAt = a.publishedAt?.toString(),
             originalUrl = a.originalUrl,
             contentHtml = a.contentHtml,
-            textContent = text,
+            optimizedHtml = ai.optimizedHtml,
+            optimizedZhHtml = ai.optimizedZhHtml,
             titleZh = ai.titleZh,
+            summaryEn = ai.summaryEn,
+            summaryZh = ai.summaryZh,
             cleanedText = ai.cleanedText,
             cleanedTextZh = ai.cleanedTextZh,
             explanation = explanationObj
