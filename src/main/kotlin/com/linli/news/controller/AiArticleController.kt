@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.springframework.http.ResponseEntity
 import io.swagger.v3.oas.annotations.Hidden
+import org.slf4j.LoggerFactory
 
 /**
  * AI 文章控制器
@@ -30,6 +31,7 @@ import io.swagger.v3.oas.annotations.Hidden
 class AiArticleController(
     private val aiArticleService: AiArticleService
 ) {
+    private val logger = LoggerFactory.getLogger(AiArticleController::class.java)
 
     // 使用正確配置的 ObjectMapper，支援 Kotlin 和 JsonProperty 註解
     private val objectMapper = ObjectMapper()
@@ -204,15 +206,16 @@ class AiArticleController(
                     "articleId" to id,
                     "hasExplanation" to (result.explanation != null),
                     "explanationFields" to if (result.explanation != null) {
+                        val exp = result.explanation
                         mapOf(
-                            "hasVocabulary" to (result.explanation!!.vocabulary?.isNotEmpty() == true),
-                            "hasGrammar" to (result.explanation!!.grammar?.isNotEmpty() == true),
-                            "hasSentencePatterns" to (result.explanation!!.sentencePatterns?.isNotEmpty() == true),
-                            "hasPhrasesIdioms" to (result.explanation!!.phrasesIdioms?.isNotEmpty() == true),
-                            "hasComprehensionMcq" to (result.explanation!!.comprehensionMcq?.isNotEmpty() == true),
-                            "vocabularyCount" to (result.explanation!!.vocabulary?.size ?: 0),
-                            "grammarCount" to (result.explanation!!.grammar?.size ?: 0),
-                            "mcqCount" to (result.explanation!!.comprehensionMcq?.size ?: 0)
+                            "hasVocabulary" to (exp.vocabulary?.isNotEmpty() == true),
+                            "hasGrammar" to (exp.grammar?.isNotEmpty() == true),
+                            "hasSentencePatterns" to (exp.sentencePatterns?.isNotEmpty() == true),
+                            "hasPhrasesIdioms" to (exp.phrasesIdioms?.isNotEmpty() == true),
+                            "hasComprehensionMcq" to (exp.comprehensionMcq?.isNotEmpty() == true),
+                            "vocabularyCount" to (exp.vocabulary?.size ?: 0),
+                            "grammarCount" to (exp.grammar?.size ?: 0),
+                            "mcqCount" to (exp.comprehensionMcq?.size ?: 0)
                         )
                     } else null,
                     "message" to "文章已重新處理",
@@ -287,6 +290,7 @@ class AiArticleController(
      */
     private fun toDto(ai: ArticleAi): AiArticleDetail {
         val a = ai.article
+        val articleId = requireNotNull(a.id) { "Article must have an ID" }
         val text = a.contentHtml?.let { htmlTagPattern.matcher(it).replaceAll("") }
         val explanationObj: Explanation? = ai.explanation?.let { explanationJson ->
             try {
@@ -294,13 +298,13 @@ class AiArticleController(
                 parsed
             } catch (e: Exception) {
                 // 記錄解析失敗，但返回 null 而不是空對象
-                println("Failed to parse explanation in controller for article ${ai.article.id}: ${e.message}")
+                logger.error("Failed to parse explanation in controller for article ${ai.article.id}: ${e.message}")
                 null
             }
         }
 
         return AiArticleDetail(
-            id = a.id!!,
+            id = articleId,
             sourceName = a.source.name,
             section = a.source.section,
             title = a.title,

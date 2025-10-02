@@ -24,6 +24,7 @@ import io.swagger.v3.oas.annotations.Hidden
 import com.linli.news.service.FeedImportService
 import com.linli.news.service.AiArticleService
 import com.linli.news.model.AiArticleDetail
+import org.slf4j.LoggerFactory
 
 /**
  * 文章資料結構
@@ -76,6 +77,8 @@ class ArticleQueryController(
     private val feedImportService: FeedImportService,
     private val aiArticleService: AiArticleService
 ) {
+    private val logger = LoggerFactory.getLogger(ArticleQueryController::class.java)
+
     /**
      * 分頁查詢最新文章，可依來源與區塊過濾
      *
@@ -113,8 +116,9 @@ class ArticleQueryController(
             else -> articleRepository.findAll(pageable)
         }
         return pageData.map { a ->
+            val articleId = requireNotNull(a.id) { "Article must have an ID" }
             ArticleDetail(
-                id = a.id!!,
+                id = articleId,
                 sourceName = a.source.name,
                 section = a.source.section,
                 title = a.title,
@@ -141,11 +145,12 @@ class ArticleQueryController(
         val article = articleRepository.findById(id).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
+        val articleId = requireNotNull(article.id) { "Article must have an ID" }
         val textContent = extractTextFromHtml(article.contentHtml)
 
         return ResponseEntity.ok(
             ArticleDetail(
-                id = article.id!!,
+                id = articleId,
                 sourceName = article.source.name,
                 section = article.source.section,
                 title = article.title,
@@ -231,12 +236,12 @@ class ArticleQueryController(
                 articleRepository.save(article)
                 successCount++
 
-                println("已更新文章: ${article.title}")
+                logger.info("已更新文章: ${article.title}")
             } catch (e: Exception) {
                 failureCount++
                 val errorMsg = "文章 ID ${article.id} (${article.title}): ${e.message}"
                 errors.add(errorMsg)
-                println("更新文章失敗: $errorMsg")
+                logger.error("更新文章失敗: $errorMsg")
             }
         }
 
@@ -313,9 +318,10 @@ class ArticleQueryController(
 
             // 轉換為詳細格式
             val articleDetails = randomArticles.map { article ->
+                val articleId = requireNotNull(article.id) { "Article must have an ID" }
                 val textContent = extractTextFromHtml(article.contentHtml)
                 ArticleDetail(
-                    id = article.id!!,
+                    id = articleId,
                     sourceName = article.source.name,
                     section = article.source.section,
                     title = article.title,

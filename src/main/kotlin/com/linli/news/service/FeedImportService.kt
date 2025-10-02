@@ -6,6 +6,7 @@ import com.linli.news.domain.ArticleSource
 import com.linli.news.integration.FullTextRssClient
 import com.linli.news.repository.ArticleRepository
 import com.linli.news.repository.ArticleSourceRepository
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.ZonedDateTime
@@ -18,7 +19,8 @@ class FeedImportService(
     private val articleRepository: ArticleRepository,
     private val articleSourceRepository: ArticleSourceRepository
 ) {
-    private fun println(message: String) = {}
+    private val logger = LoggerFactory.getLogger(FeedImportService::class.java)
+
     /**
      * 從 RSS 匯入全文文章並儲存。
      *
@@ -33,7 +35,7 @@ class FeedImportService(
         val source = articleSourceRepository.findByRssUrl(rssUrl)?.apply {
             // 更新現有來源的名稱和區塊（如果有變化）
             if (this.name != sourceName || this.section != section) {
-                println("DEBUG: Updating source name from '${this.name}' to '$sourceName' and section from '${this.section}' to '$section'")
+                logger.debug("Updating source name from '${this.name}' to '$sourceName' and section from '${this.section}' to '$section'")
                 this.name = sourceName
                 this.section = section
                 articleSourceRepository.save(this)
@@ -42,22 +44,22 @@ class FeedImportService(
 
         val json = fullTextRssClient.fetchFeedJson(rssUrl)
         val items = extractItems(json)
-        println("DEBUG: Found ${items.size} items in feed from source: $sourceName, section: $section")
+        logger.info("Found ${items.size} items in feed from source: $sourceName, section: $section")
 
         var imported = 0
         for ((index, item) in items.withIndex()) {
             val link = getText(item, "link")
-            println("DEBUG: Processing item $index, link = $link")
+            logger.debug("Processing item $index, link = $link")
 
             if (link == null) {
-                println("DEBUG: Skipping item $index - no link found")
+                logger.debug("Skipping item $index - no link found")
                 continue
             }
 
             // 去重
             val existing = articleRepository.findByOriginalUrl(link)
             if (existing != null) {
-                println("DEBUG: Skipping item $index - duplicate URL: $link")
+                logger.debug("Skipping item $index - duplicate URL: $link")
                 continue
             }
 
@@ -69,16 +71,16 @@ class FeedImportService(
 
             // 過濾非新聞文章內容
             if (!isValidNewsArticle(title, description, link)) {
-                println("DEBUG: Skipping item $index - not a valid news article: $title")
+                logger.debug("Skipping item $index - not a valid news article: $title")
                 continue
             }
 
-            println("DEBUG: Item $index fields:")
-            println("  title: $title")
-            println("  description: ${description?.take(100)}...")
-            println("  pubDate: $pubDate")
-            println("  content: ${if (content != null) "有全文內容 (${content.length} 字)" else "無全文內容"}")
-            println("  available fields: ${item.fieldNames().asSequence().toList()}")
+            logger.debug("Item $index fields:")
+            logger.debug("  title: $title")
+            logger.debug("  description: ${description?.take(100)}...")
+            logger.debug("  pubDate: $pubDate")
+            logger.debug("  content: ${if (content != null) "有全文內容 (${content.length} 字)" else "無全文內容"}")
+            logger.debug("  available fields: ${item.fieldNames().asSequence().toList()}")
 
             val article = Article(
                 source = source, // 使用更新後的來源
@@ -97,40 +99,41 @@ class FeedImportService(
             try {
                 articleRepository.save(article)
                 imported++
-                println("DEBUG: Successfully imported article from $sourceName/${section}: $title")
+                logger.info("Successfully imported article from $sourceName/${section}: $title")
 
                 // 檢查是否有完整內容
                 if (content != null && content.length > 200) {
-                    println("DEBUG: Article has full content (${content.length} chars)")
+                    logger.debug("Article has full content (${content.length} chars)")
                 } else {
-                    println("DEBUG:  Article has limited content, attempting to fetch full text...")
+                    logger.debug("Article has limited content, attempting to fetch full text...")
 
                     // 嘗試使用 Full-Text RSS extract API 取得完整內容
                     try {
                         val fullTextResponse = fullTextRssClient.fetchArticleFullText(link)
-                        if (!fullTextResponse.content.isNullOrBlank() && fullTextResponse.content!!.length > 200) {
-                            article.contentHtml = fullTextResponse.content
+                        val responseContent = fullTextResponse.content
+                        if (!responseContent.isNullOrBlank() && responseContent.length > 200) {
+                            article.contentHtml = responseContent
                             article.author = fullTextResponse.author ?: article.author
                             article.language = fullTextResponse.language ?: article.language
                             article.wordCount = fullTextResponse.wordCount ?: article.wordCount
                             article.effectiveUrl = fullTextResponse.url ?: article.effectiveUrl
 
                             articleRepository.save(article)
-                            println("DEBUG: Successfully fetched and saved full content (${fullTextResponse.content!!.length} chars)")
+                            logger.info("Successfully fetched and saved full content (${responseContent.length} chars)")
                         } else {
-                            println("DEBUG:  Full-text extraction returned limited content")
+                            logger.debug("Full-text extraction returned limited content")
                         }
                     } catch (e: Exception) {
-                        println("DEBUG: Failed to fetch full content: ${e.message}")
+                        logger.warn("Failed to fetch full content: ${e.message}")
                     }
                 }
 
             } catch (e: Exception) {
-                println("DEBUG: Failed to save article: ${e.message}")
+                logger.error("Failed to save article: ${e.message}", e)
             }
         }
 
-        println("DEBUG: Import completed for $sourceName/$section. Total imported: $imported out of ${items.size}")
+        logger.info("Import completed for $sourceName/$section. Total imported: $imported out of ${items.size}")
         return imported
     }
 

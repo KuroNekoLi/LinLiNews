@@ -3,6 +3,7 @@ package com.linli.news.service
 import org.jobrunr.jobs.JobId
 import org.jobrunr.jobs.annotations.Job
 import org.jobrunr.scheduling.JobScheduler
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -22,6 +23,7 @@ class BackgroundJobService(
     private val feedImportService: FeedImportService,
     private val jobScheduler: JobScheduler
 ) {
+    private val logger = LoggerFactory.getLogger(BackgroundJobService::class.java)
 
     /**
      * 提交 BBC 新聞匯入背景任務 - 正確方式
@@ -43,9 +45,9 @@ class BackgroundJobService(
     fun executeBbcNewsImport(rssUrl: String, sourceName: String, section: String) {
         try {
             val result = feedImportService.importFromFeed(rssUrl, sourceName, section)
-            println("Successfully imported $result articles from $sourceName/$section")
+            logger.info("Successfully imported $result articles from $sourceName/$section")
         } catch (e: Exception) {
-            println("Failed to import from $sourceName/$section: ${e.message}")
+            logger.error("Failed to import from $sourceName/$section: ${e.message}", e)
             throw e // 重拋異常以便 JobRunr 可以重試
         }
     }

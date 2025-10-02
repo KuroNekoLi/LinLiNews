@@ -1,5 +1,6 @@
 package com.linli.news.service
 
+import org.slf4j.LoggerFactory
 import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Service
@@ -12,13 +13,14 @@ import org.springframework.stereotype.Service
  */
 @Service
 class JobRunrCleanupService {
+    private val logger = LoggerFactory.getLogger(JobRunrCleanupService::class.java)
 
     /**
      * 應用啟動後顯示清理說明
      */
     @EventListener(ApplicationReadyEvent::class)
     fun showCleanupInstructions() {
-        println(
+        logger.info(
             """
             
             ========================================

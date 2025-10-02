@@ -137,12 +137,13 @@ class AiArticleService(
 
         for (article in selectedArticles) {
             try {
-                val existing = articleAiRepository.findByArticle_Id(article.id!!)
+                val existing =
+                    articleAiRepository.findByArticle_Id(requireNotNull(article.id) { "Article must have an ID" })
                 if (existing.isPresent) {
                     result.add(existing.get())
                 } else {
                     logger.info("Processing article ${article.id} with AI: ${article.title}")
-                    val aiArticle = getOrProcess(article.id!!)
+                    val aiArticle = getOrProcess(requireNotNull(article.id) { "Article must have an ID" })
                     result.add(aiArticle)
                     processedCount++
                 }
@@ -198,13 +199,14 @@ class AiArticleService(
     }
 
     private fun toDto(article: com.linli.news.domain.Article, aiArticle: ArticleAi): AiArticleDetail {
+        val articleId = requireNotNull(article.id) { "Article must have an ID" }
         val explanationJson = aiArticle.explanation
         val explanation = try {
             if (explanationJson.isNullOrBlank()) {
-                logger.warn("Article ${article.id} has null or blank explanation JSON")
+                logger.warn("Article $articleId has null or blank explanation JSON")
                 null
             } else {
-                logger.debug("Parsing explanation JSON for article ${article.id}: ${explanationJson.take(200)}...")
+                logger.debug("Parsing explanation JSON for article $articleId: ${explanationJson.take(200)}...")
 
                 // 創建一個更寬容的 ObjectMapper 配置
                 val tolerantMapper = objectMapper.copy()
@@ -218,19 +220,19 @@ class AiArticleService(
                 )
 
                 val parsedExplanation = tolerantMapper.readValue(explanationJson, Explanation::class.java)
-                logger.info("Successfully parsed explanation for article ${article.id}: vocab=${parsedExplanation.vocabulary?.size}, grammar=${parsedExplanation.grammar?.size}, mcq=${parsedExplanation.comprehensionMcq?.size}")
+                logger.info("Successfully parsed explanation for article $articleId: vocab=${parsedExplanation.vocabulary?.size}, grammar=${parsedExplanation.grammar?.size}, mcq=${parsedExplanation.comprehensionMcq?.size}")
                 parsedExplanation
             }
         } catch (e: Exception) {
-            logger.warn("Failed to parse explanation JSON for article ${article.id}: ${e.message}")
+            logger.warn("Failed to parse explanation JSON for article $articleId: ${e.message}")
             logger.debug("Raw explanation JSON: $explanationJson")
 
             // 檢查 JSON 內容來提供更具體的錯誤信息
             if (explanationJson?.contains("\"explanation\"") == true) {
                 if (!explanationJson.trim().endsWith("}")) {
-                    logger.warn("Article ${article.id} explanation JSON appears to be truncated")
+                    logger.warn("Article $articleId explanation JSON appears to be truncated")
                 } else {
-                    logger.warn("Article ${article.id} explanation JSON structure is invalid")
+                    logger.warn("Article $articleId explanation JSON structure is invalid")
                 }
             }
 
@@ -257,7 +259,7 @@ class AiArticleService(
 
         return AiArticleDetail(
             // 原文章欄位
-            id = article.id!!,
+            id = articleId,
             sourceName = article.source.name,
             section = article.source.section,
             title = article.title,

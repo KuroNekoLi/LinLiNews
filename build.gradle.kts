@@ -30,7 +30,21 @@ dependencies {
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
     // HTTP client utilities (already in Spring), JSON handled by Jackson
     runtimeOnly("com.mysql:mysql-connector-j")
-    testImplementation("org.springframework.boot:spring-boot-starter-test")
+
+    // Testing dependencies
+    testImplementation("org.springframework.boot:spring-boot-starter-test") {
+        exclude(group = "org.mockito") // 使用 MockK 取代 Mockito
+    }
+    testImplementation("io.mockk:mockk:1.13.9") // MockK for Kotlin
+    testImplementation("com.ninja-squad:springmockk:4.0.2") // Spring + MockK 整合
+    testImplementation("io.kotest:kotest-runner-junit5:5.8.0") // Kotest JUnit5 runner
+    testImplementation("io.kotest:kotest-assertions-core:5.8.0") // Kotest assertions
+    testImplementation("io.kotest:kotest-property:5.8.0") // Property-based testing
+    testImplementation("io.kotest.extensions:kotest-extensions-spring:1.1.3") // Kotest Spring extension
+    testImplementation("com.h2database:h2") // H2 for in-memory database testing
+    testImplementation("org.testcontainers:testcontainers:1.19.3") // Testcontainers (可選)
+    testImplementation("org.testcontainers:mysql:1.19.3") // MySQL Testcontainers
+    testImplementation("org.testcontainers:junit-jupiter:1.19.3") // Testcontainers JUnit5
 }
 
 tasks.withType<KotlinCompile> {

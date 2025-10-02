@@ -13,6 +13,7 @@ Swagger API 文件。
 - [Zeabur 部署](#zeabur-部署與-cicd)
 - [環境變數](#環境變數本機與雲端通用)
 - [常見問題](#常見問題排查)
+- [測試](#測試)
 
 ---
 
@@ -189,7 +190,8 @@ ports:
 Spring Boot 配置：
 ```yaml
 fulltextrss:
-  base-url: http://localhost:8085
+  base-url: http://localhost:8085  # 本機
+# 或 http://<FTR_INTERNAL_HOST>           # Zeabur 內網
 ```
 
 ### 容器管理指令
@@ -398,33 +400,81 @@ JOBRUNR_DASHBOARD_PORT=8001
 
 ---
 
-## 開發環境設定
+## 測試
 
-### 非生產環境啟用測試端點
+本專案使用 Kotlin 友好的測試框架進行測試。
 
-測試/管理端點預設在生產環境停用，若要在本機或測試環境使用：
+### 測試框架
+
+- **MockK** - Kotlin 原生 mocking 框架
+- **SpringMockK** - Spring + MockK 整合
+- **JUnit 5** - 測試斷言與執行
+- **Spring Boot Test** - Spring 測試工具（`@WebMvcTest`, `@DataJpaTest`）
+- **H2 Database** - 記憶體資料庫（測試環境）
+
+### 測試範例
+
+```kotlin
+// Service 測試（MockK）
+@Test
+fun `randomWithProcessing 應該自動處理未處理的文章`() {
+    val article = Article(...)
+    every { articleRepository.findAll() } returns listOf(article)
+    every { aiProcessor.process(...) } returns aiResponse
+    
+    val (result, total, processedCount) = service.randomWithProcessing(1, null, null)
+    
+    assertEquals(1, processedCount)
+    verify(exactly = 1) { aiProcessor.process(any(), any()) }
+}
+
+### 測試覆蓋範圍
+
+✅ **Service 層**
+- `AiArticleServiceTest` - 13 個測試
+  - random() 方法的來源/區塊過濾
+  - randomWithProcessing() 自動處理文章
+  - listProcessed() 分頁查詢
+  - getOrProcess() 取得或處理單篇
+  
+- `FeedImportServiceTest` - 1 個測試
+  - RSS 匯入流程與無效文章過濾
+
+✅ **Controller 層**
+- `AiArticleControllerTest` - 6 個測試
+  - GET /api/ai-articles（列表、隨機、帶處理）
+  - 來源與區塊過濾
+  
+- `ArticleQueryControllerTest` - 8 個測試
+  - GET /api/articles（列表、單篇、過濾）
+  - 404 錯誤處理
+
+✅ **Repository 層**
+- `ArticleRepositoryTest` - 6 個測試
+  - CRUD 操作
+  - 自訂查詢方法（findByOriginalUrl、findBySource_Name、findBySource_Section）
+  - 分頁查詢
+
+### 執行測試
 
 ```bash
-# 方式 1：不設定 profile（預設非 prod）
-./gradlew bootRun
+# 執行所有測試
+./gradlew test
 
-# 方式 2：明確指定 dev profile
-./gradlew bootRun --args='--spring.profiles.active=dev'
+# 執行特定測試
+./gradlew test --tests AiArticleServiceTest
 
-# 方式 3：使用環境變數
-SPRING_PROFILES_ACTIVE=dev ./gradlew bootRun
+# 查看測試報告
+open build/reports/tests/test/index.html
 ```
 
-測試端點包含：
+### 測試環境配置
 
-- `/api/ops/*` - 運維驗證端點
-- `/api/background-jobs/*` - 背景任務測試端點
-- `/api/articles/admin/*` - 管理端點
-- `/api/articles/*/fetch-content` - 內容補齊端點
-- `/api/ai-articles/*/debug-*` - AI 調試端點
+測試環境使用 `src/test/resources/application-test.yml`：
+
+- H2 記憶體資料庫（MySQL 模式）
+- 停用 Flyway 遷移（使用 Hibernate 自動建表）
+- 停用 JobRunr 排程
+- Mock 外部服務端點
 
 ---
-
-## 授權
-
-內部專案示例，可自由調整使用。
