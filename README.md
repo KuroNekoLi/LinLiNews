@@ -6,6 +6,7 @@ Swagger API 文件。
 ## 目錄
 
 - [快速開始](#快速開始新手友好)
+- [本地隧道部署](#本地隧道部署cloudflared)
 - [API 文件](#api-文件swagger)
 - [主要功能](#主要功能)
 - [系統架構](#系統架構與元件)
@@ -71,11 +72,75 @@ curl -s "http://localhost:8080/api/ai-articles/random-with-processing?count=3" |
 
 ---
 
+## 本地隧道部署（Cloudflared）
+
+### 使用場景
+
+當您想讓其他人訪問您本地運行的服務時，可以使用 Cloudflared 隧道創建公開網址。
+
+### 快速設置
+
+**1) 啟動本地服務**
+
+```powershell
+# 啟動 Docker 服務
+docker-compose up -d
+
+# 啟動應用（另一個終端）
+.\gradlew.bat bootRun
+```
+
+**2) 創建公開隧道**
+
+```powershell
+# 新開一個 PowerShell 視窗
+"C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel --url http://localhost:8080
+```
+
+**3) 取得公開網址**
+
+您會看到類似這樣的輸出：
+
+```
+Your quick Tunnel has been created! Visit it at:
+https://reasoning-compression-marijuana-katrina.trycloudflare.com
+```
+
+### 實際範例
+
+**目前運行的公開網址**: https://reasoning-compression-marijuana-katrina.trycloudflare.com
+
+其他人可以通過以下網址訪問：
+
+- **API 文件**: https://reasoning-compression-marijuana-katrina.trycloudflare.com/swagger-ui/index.html
+- **文章列表**: https://reasoning-compression-marijuana-katrina.trycloudflare.com/api/articles
+- **隨機文章**: https://reasoning-compression-marijuana-katrina.trycloudflare.com/api/articles/random?count=3
+- **AI 文章**: https://reasoning-compression-marijuana-katrina.trycloudflare.com/api/ai-articles
+
+### 便利工具
+
+專案已提供批次檔案簡化操作：
+
+- `start-with-tunnel.bat` - 啟動本地服務
+- `start-tunnel.bat` - 創建 Cloudflared 隧道
+- `LOCAL_TUNNEL_SETUP.md` - 完整設置指南
+
+### 注意事項
+
+⚠️ **安全提醒**：
+
+- 隧道會將您的本地服務暴露到公共網路
+- 網址會在重啟隧道後改變
+- 僅建議開發測試使用，勿用於生產環境
+
+---
+
 ## API 文件（Swagger）
 
 本專案使用 `springdoc-openapi` 自動產生文件，啟動後可至：
 
-- **Swagger UI**: http://localhost:8080/swagger-ui/index.html
+- **本地**: http://localhost:8080/swagger-ui/index.html
+- **公開隧道**: https://reasoning-compression-marijuana-katrina.trycloudflare.com/swagger-ui/index.html
 - **OpenAPI JSON**: http://localhost:8080/v3/api-docs
 
 所有端點都提供完整的繁體中文說明。
