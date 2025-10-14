@@ -1,0 +1,81 @@
+server:
+  port: ${PORT:8080}
+  # 針對隧道環境優化的超時設定
+  tomcat:
+    connection-timeout: 300000  # 5 分鐘 (300 秒)
+    keep-alive-timeout: 300000  # 5 分鐘
+    max-keep-alive-requests: 100
+  # 支援反向代理標頭
+  forward-headers-strategy: framework
+  url: ${SERVER_URL:}
+
+spring:
+  # 數據庫連接池優化
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3307/linli_news?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=UTC&createDatabaseIfNotExist=true&socketTimeout=300000&connectTimeout=60000}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:rootpwd}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      connection-timeout: 60000      # 1 分鐘連接超時
+      idle-timeout: 300000           # 5 分鐘空閒超時
+      max-lifetime: 1800000          # 30 分鐘最大生命週期
+      maximum-pool-size: 20
+      minimum-idle: 5
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        # 查詢超時設定
+        query.timeout: 300000        # 5 分鐘查詢超時
+
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+
+  flyway:
+    enabled: ${SPRING_FLYWAY_ENABLED:true}
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  # Web MVC 超時設定
+  mvc:
+    async:
+      request-timeout: 300000        # 5 分鐘異步請求超時
+
+# Full-Text RSS 配置
+fulltextrss:
+  base-url: ${FULLTEXTRSS_BASE_URL:http://localhost:8085}
+  timeout: 60000                     # 1 分鐘超時
+
+# OpenAI 配置 (針對隧道環境優化)
+openai:
+  api-key: ${OPENAI_API_KEY:}
+  base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+  model: ${OPENAI_MODEL:gpt-4o}
+  max-tokens: ${OPENAI_MAX_TOKENS:16000}
+  timeout: 240000                    # 4 分鐘 OpenAI API 超時 (留 1 分鐘給隧道處理)
+  explanation-fallback-enabled: ${OPENAI_EXPLANATION_FALLBACK_ENABLED:true}
+
+# JobRunr 配置
+org:
+  jobrunr:
+    job-scheduler:
+      enabled: ${JOBRUNR_SCHEDULER_ENABLED:true}
+    background-job-server:
+      enabled: ${JOBRUNR_BACKGROUND_ENABLED:true}
+    dashboard:
+      enabled: ${JOBRUNR_DASHBOARD_ENABLED:false}
+      port: ${JOBRUNR_DASHBOARD_PORT:8001}
+
+# 日誌配置
+logging:
+  level:
+    com.linli.news: INFO
+    org.springframework.web: INFO
+    org.hibernate.SQL: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

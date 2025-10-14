@@ -1,151 +1,101 @@
-# 本地 Docker + Cloudflared 隧道設置指南
+# LinLi News — 本地部署 + Cloudflare 隧道
 
-這個指南將幫助您在本地運行 LinLi News 專案，並使用 Cloudflared 隧道讓其他人可以訪問。
+這份文件適用於固定域名部署（如：kuronekoli.uk），僅需一個步驟即可自動發布公開 API 網址。
 
-## 前置需求
+## 一鍵啟動（唯一推薦，最簡流程）
 
-✅ Docker Desktop 已安裝並運行  
-✅ JDK 21 已安裝  
-✅ Cloudflared 已安裝在 `C:\Program Files (x86)\cloudflared\cloudflared.exe`
+> 本專案只需要執行 `start-simple.bat` 就能：
+> - 啟動 Docker (MySQL + Full-Text RSS)
+> - 啟動 Cloudflare 隧道（固定公開網址 https://app.kuronekoli.uk）
+> - 啟動 Spring Boot 應用
+    > 其他批次檔案都不需要。
 
-## 方法 1：使用批次檔案（推薦）
+### 步驟
 
-### 步驟 1：啟動應用服務
+1. 確認 `.cloudflared` 目錄 **（通常在 `C:\Users\WIN10\.cloudflared`）** 包含下列檔案：
+   - `cert.pem`
+   - `config.yml`（含正確 ingress 規則，指向 http://localhost:8080）
+   - `{tunnel-id}.json`（Cloudflare 隧道憑證）
+2. 本機的 Cloudflared 隧道 tunnel 名稱、DNS 及 Cloudflare 網域都已配置好。
+3. 雙擊專案根目錄的 `start-simple.bat`。
 
-雙擊 `start-with-tunnel.bat` 或在 PowerShell 中執行：
+所有啟動、憑證、映射、Cloudflare 隧道都會自動完成。
 
-```powershell
-.\start-with-tunnel.bat
-```
+---
 
-### 步驟 2：啟動隧道服務
+### `start-simple.bat` 範例內容
 
-**另開一個 PowerShell 視窗**，雙擊 `start-tunnel.bat` 或執行：
-
-```powershell
-.\start-tunnel.bat
-```
-
-## 方法 2：手動執行
-
-### 步驟 1：啟動基礎服務
-
-```powershell
-# 啟動 MySQL 和 Full-Text RSS
+```bat
+@echo off
+echo 啟動 LinLi News...
+REM 設定必要的環境變數
+set OPENAI_API_KEY=sk-xxxxxx
+set SERVER_URL=https://app.kuronekoli.uk
+echo 啟動 Docker...
 docker-compose up -d
-
-# 檢查狀態
-docker-compose ps
-```
-
-### 步驟 2：啟動 Spring Boot
-
-```powershell
+echo 啟動隧道...
+start "Cloudflare-Tunnel" cmd /c "title Cloudflare Tunnel && cloudflared tunnel --config C:\Users\WIN10\.cloudflared\config.yml run myhome"
+echo 等待隧道建立...
+timeout /t 10 /nobreak > nul
+echo 啟動應用...
+echo 📍 本機: http://localhost:8080/swagger-ui/index.html
+echo 🌐 公開: https://app.kuronekoli.uk/swagger-ui/index.html
+echo.
 .\gradlew.bat bootRun
 ```
 
-### 步驟 3：開啟隧道
+### 公開網址 & 測試 API
 
-**新開 PowerShell 視窗**：
+- 公開網址：https://app.kuronekoli.uk/swagger-ui/index.html
+- API 範例：
+   - https://app.kuronekoli.uk/api/articles?page=0&size=5
+   - https://app.kuronekoli.uk/api/ai-articles/random-with-processing?count=3
 
-```powershell
-"C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel --url http://localhost:8080
-```
+---
 
-## 取得公開網址
+## 常見故障處理
 
-當 cloudflared 啟動後，您會看到類似這樣的輸出：
+- **本地可以，公開 503/1033**：通常是 cloudflared 沒有連正確憑證或 config，重新執行 tunnel login 並確保憑證在主用戶資料夾。
+- **本地 8080 占用**：確保無其他程式佔用。
+- **config.yml 無 ingress**：務必包含 hostname 指向 http://localhost:8080。
+- **API Key 無效**：在批次檔或 `OPENAI_API_KEY` 環境變數指定。
+- **Swagger 無法打開**：先檢查本機 http://localhost:8080 運行正常。
+- 隧道正在運行：使用 `cloudflared tunnel list`、`cloudflared tunnel info myhome` 檢查，或 Cloudflare 網站 Dashboard。
 
-```
-Your quick Tunnel has been created! Visit it at:
-https://xxxxx-xxx-xxx.trycloudflare.com
-```
+---
 
-**這個網址就是其他人可以訪問的公開網址！**
+## 停止與清理
 
-## 重要端點
+### 停止所有服務
 
-- **API 文件**: `https://your-tunnel-url.trycloudflare.com/swagger-ui/index.html`
-- **文章列表**: `https://your-tunnel-url.trycloudflare.com/api/articles`
-- **隨機文章**: `https://your-tunnel-url.trycloudflare.com/api/articles/random?count=3`
-
-## 設置 Swagger 正確顯示外部網址
-
-如果您希望 Swagger UI 顯示正確的外部網址：
-
-1. 取得 cloudflared 提供的網址
-2. 編輯 `start-with-tunnel.bat`
-3. 取消註釋並修改這一行：
-   ```batch
-   set SERVER_URL=https://your-actual-tunnel-url.trycloudflare.com
-   ```
-4. 重新啟動應用
-
-## 故障排除
-
-### Docker 服務無法啟動
-
-```powershell
-# 檢查 Docker Desktop 是否運行
-docker --version
-
-# 重新啟動服務
-docker-compose down
-docker-compose up -d
-```
-
-### Spring Boot 啟動失敗
-
-- 確認 MySQL 容器已啟動且健康：`docker-compose ps`
-- 檢查 3307 端口是否被占用
-- 查看應用日誌找出錯誤原因
-
-### 隧道無法創建
-
-- 確認 cloudflared 路徑正確
-- 檢查網路連線
-- 確認本地 8080 端口的服務正在運行
-
-### 外部用戶無法訪問
-
-- 確認防火牆沒有阻擋
-- 檢查 cloudflared 隧道狀態
-- 確認使用正確的公開網址
-
-## 停止服務
-
-### 停止 Spring Boot
-
-在運行應用的終端按 `Ctrl+C`
-
-### 停止 Cloudflared 隧道
-
-在運行隧道的終端按 `Ctrl+C`
-
-### 停止 Docker 服務
-
+- 在運行的終端視窗按 `Ctrl+C`
+- 或關閉 `Cloudflare-Tunnel` 視窗
+- Docker 下：
 ```powershell
 docker-compose down
 ```
 
-## 安全注意事項
-
-- ⚠️ 這會將您的應用暴露到公共網路
-- ⚠️ 請勿在生產環境使用此方法
-- ⚠️ Cloudflare 隧道網址會在重啟後改變
-- ⚠️ 建議定期監控訪問日誌
-
-## 範例 API 測試
-
-其他人可以使用以下命令測試您的 API：
-
-```bash
-# 取得文章列表
-curl "https://your-tunnel-url.trycloudflare.com/api/articles?page=0&size=5"
-
-# 取得隨機文章
-curl "https://your-tunnel-url.trycloudflare.com/api/articles/random?count=3"
-
-# 查看 API 文件
-# 直接在瀏覽器開啟：https://your-tunnel-url.trycloudflare.com/swagger-ui/index.html
+### 完全清理
+```powershell
+docker-compose down -v
+del tunnel_url.txt
+del %TEMP%\tunnel*.txt
+del %TEMP%\tunnel*.log
 ```
+
+---
+
+## 安全提醒
+
+- 公開 API 為開發/測試用，勿直接放生產
+- OpenAI API Key 請勿提交至 git 倉庫
+- Cloudflare 隧道失效時需重新登入與憑證校驗
+- 所有多餘啟動批次檔案都可直接刪除，不再維護
+
+---
+
+## 舊啟動方式已移除
+
+- `start-all.bat`、`start-with-notification.bat`、`start-complete.bat`、`start-with-ai.bat`、`start-with-tunnel.bat`、
+  `start-tunnel.bat` 等都可刪除。
+- 本文件只保留一鍵起啟、唯一的官方方案。
