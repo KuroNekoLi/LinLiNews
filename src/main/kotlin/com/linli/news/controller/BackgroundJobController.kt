@@ -1,27 +1,32 @@
 package com.linli.news.controller
 
 import com.linli.news.service.BackgroundJobService
-import org.jobrunr.jobs.JobId
-import org.springframework.context.annotation.Profile
-import org.springframework.http.ResponseEntity
-import org.springframework.web.bind.annotation.*
+import io.swagger.v3.oas.annotations.Hidden
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
-import io.swagger.v3.oas.annotations.tags.Tag
 import io.swagger.v3.oas.annotations.media.Schema
-import io.swagger.v3.oas.annotations.Hidden
+import io.swagger.v3.oas.annotations.tags.Tag
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
+import org.springframework.context.annotation.Profile
+import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RestController
 
 /**
  * 背景任務控制器 - 展示正確的 JobRunr 使用方式
  *
  * 這個控制器展示如何正確地使用 JobRunr 提交背景任務，
  * 避免 kotlin.jvm.functions.Function0 的 NoSuchBeanDefinitionException 錯誤
+ * 只有在 BackgroundJobService 存在時才會被創建
  *
  * @property backgroundJobService 背景任務服務
  */
 @RestController
 @RequestMapping("/api/background-jobs")
 @Profile("!prod")
+@ConditionalOnBean(BackgroundJobService::class)
 @Hidden
 @Tag(name = "背景任務測試 API", description = "測試用背景任務端點（僅限非生產環境）")
 class BackgroundJobController(

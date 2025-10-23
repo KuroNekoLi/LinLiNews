@@ -4,10 +4,13 @@ import com.linli.news.service.FeedImportService
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import org.jobrunr.jobs.annotations.Job
+import org.jobrunr.scheduling.JobScheduler
 import org.slf4j.LoggerFactory
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.stereotype.Service
 
 @Service
+@ConditionalOnBean(JobScheduler::class)
 class BbcImportJobService(
     private val feedImportService: FeedImportService,
     private val meterRegistry: MeterRegistry

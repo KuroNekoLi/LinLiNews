@@ -1,11 +1,12 @@
 package com.linli.news.config
 
 import com.linli.news.jobs.BbcImportJobService
+import jakarta.annotation.PostConstruct
 import org.jobrunr.scheduling.JobScheduler
 import org.slf4j.LoggerFactory
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 import java.time.Duration
-import jakarta.annotation.PostConstruct
 
 /**
  * BBC 定期任務註冊器
@@ -15,6 +16,12 @@ import jakarta.annotation.PostConstruct
  * @property jobScheduler JobRunr 任務排程器
  */
 @Component
+@ConditionalOnProperty(
+    prefix = "org.jobrunr.job-scheduler",
+    name = ["enabled"],
+    havingValue = "true",
+    matchIfMissing = true  // 預設為 true，保持向後兼容
+)
 class BbcRecurringJobRegistrar(
     private val jobScheduler: JobScheduler
 ) {
