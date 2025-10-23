@@ -8,6 +8,7 @@ server:
 
 fulltextrss:
   base-url: ${FULLTEXTRSS_BASE_URL:http://localhost:8085}
+  enabled: ${FULLTEXTRSS_ENABLED:true}
 
 spring:
   datasource:

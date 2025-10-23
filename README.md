@@ -6,6 +6,7 @@ Swagger API 文件。
 ## 目錄
 
 - [快速開始](#快速開始新手友好)
+- [資源管理](#資源管理控制定時任務與服務)
 - [本地隧道部署](#本地隧道部署cloudflared)
 - [API 文件](#api-文件swagger)
 - [主要功能](#主要功能)
@@ -15,6 +16,7 @@ Swagger API 文件。
 - [環境變數](#環境變數本機與雲端通用)
 - [常見問題](#常見問題排查)
 - [測試](#測試)
+- [資源控制快速參考](#資源控制快速參考指南)
 
 ---
 
@@ -69,6 +71,84 @@ curl -s "http://localhost:8080/api/ai-articles/1" | jq .
 # 隨機取得 3 篇文章並自動進行 AI 處理（若尚未處理）
 curl -s "http://localhost:8080/api/ai-articles/random-with-processing?count=3" | jq .
 ```
+
+---
+
+## 資源管理：控制定時任務與服務
+
+如果您覺得主機負擔太大，可以選擇性地停用定時任務或 Full-Text RSS 服務。
+
+### 方式一：使用便利腳本（推薦）
+
+專案已提供批次檔案簡化操作：
+
+```powershell
+# 啟動應用程式（不執行定時任務，節省資源）
+.\start-without-jobs.bat
+
+# 停用定時任務與 Full-Text RSS
+.\disable-jobs.bat
+
+# 重新啟用定時任務與 Full-Text RSS
+.\enable-jobs.bat
+```
+
+### 方式二：手動控制 Docker 容器
+
+```bash
+# 只停止 Full-Text RSS（保留 MySQL）
+docker stop fulltextrss
+
+# 重新啟動
+docker start fulltextrss
+
+# 停止所有 Docker 服務
+docker-compose stop
+
+# 啟動所有 Docker 服務
+docker-compose start
+```
+
+### 方式三：環境變數控制
+
+```powershell
+# 停用 JobRunr 定時任務
+$env:JOBRUNR_SCHEDULER_ENABLED="false"
+$env:JOBRUNR_BACKGROUND_ENABLED="false"
+.\gradlew.bat bootRun
+
+# 啟用 JobRunr 定時任務
+$env:JOBRUNR_SCHEDULER_ENABLED="true"
+$env:JOBRUNR_BACKGROUND_ENABLED="true"
+.\gradlew.bat bootRun
+```
+
+### 效果說明
+
+停用後的影響：
+
+- ✅ **API 服務正常運作**：查詢文章、AI 處理等功能完全可用
+- ✅ **資料庫現有資料**：可正常查詢已匯入的文章
+- ❌ **不會自動抓取新文章**：需要手動觸發或重新啟用
+- ❌ **無法使用 Full-Text RSS**：若 RSS 內容不完整，無法補齊全文
+
+### 手動觸發匯入（可選）
+
+如果停用定時任務但偶爾需要更新文章，可以使用 API 手動觸發：
+
+```bash
+# 僅在開發環境可用（生產環境已停用）
+curl -X POST "http://localhost:8080/api/ops/trigger-bbc-news"
+```
+
+**注意**：此端點在生產環境（`prod` profile）會被停用以確保安全。
+
+### 📖 完整資源控制指南
+
+更多詳細的資源控制選項、部署模式對比、使用場景建議，請參考：
+
+- **[資源控制快速參考指南](./RESOURCE_CONTROL_GUIDE.md)** - 本機與雲端資源控制總覽
+- **[Zeabur 環境變數設定指南](./ZEABUR_ENV_SETUP.md)** - Zeabur 雲端部署完整指南
 
 ---
 
@@ -307,6 +387,9 @@ docker-compose down -v
   # Full-Text RSS
   FULLTEXTRSS_BASE_URL=http://<FTR_INTERNAL_HOST>
   
+  # Full-Text RSS 啟用控制（可選）
+  FULLTEXTRSS_ENABLED=true   # 啟用全文抓取
+  
   # OpenAI API
   OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>
   ```
@@ -335,6 +418,38 @@ open https://<你的子網域>/swagger-ui/index.html
 curl -s "https://<你的子網域>/api/articles?page=0&size=5" | jq .
 ```
 
+### 資源控制與環境變數
+
+在 Zeabur 上，您可以透過環境變數靈活控制應用程式的功能與資源使用：
+
+#### 🎛️ 控制選項
+
+1. **定時任務控制（JobRunr）**
+   ```bash
+   JOBRUNR_SCHEDULER_ENABLED=false   # 停用自動抓取，節省 CPU
+   JOBRUNR_BACKGROUND_ENABLED=false
+   ```
+
+2. **Full-Text RSS 控制**
+   ```bash
+   FULLTEXTRSS_ENABLED=false         # 停用全文抓取，節省記憶體
+   # 停用後可不部署 Full-Text RSS 服務
+   ```
+
+#### 📊 三種部署模式
+
+| 模式          | 定時任務 | Full-Text RSS | CPU | 記憶體    | 適用場景    |
+|-------------|------|---------------|-----|--------|---------|
+| 🟢 **全功能**  | ✅    | ✅             | 高   | ~800MB | 正式運營    |
+| 🟡 **手動更新** | ❌    | ✅             | 中   | ~600MB | 開發/測試   |
+| 🔴 **僅查詢**  | ❌    | ❌             | 低   | ~400MB | Demo/展示 |
+
+#### 📖 詳細說明
+
+完整的環境變數設定、部署場景範例、資源使用對比與故障排查，請參考：
+
+**👉 [Zeabur 環境變數設定指南](./ZEABUR_ENV_SETUP.md)**
+
 ---
 
 ## 環境變數（本機與雲端通用）
@@ -350,6 +465,10 @@ SPRING_DATASOURCE_PASSWORD=<MYSQL_PASSWORD>
 # Full-Text RSS 服務位址
 FULLTEXTRSS_BASE_URL=http://localhost:8085  # 本機
 # 或 http://<FTR_INTERNAL_HOST>           # Zeabur 內網
+
+# Full-Text RSS 啟用控制（可選，預設為 true）
+FULLTEXTRSS_ENABLED=true   # 啟用全文抓取
+# FULLTEXTRSS_ENABLED=false  # 停用，節省資源
 
 # OpenAI API（AI 功能必要）
 OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>
@@ -380,6 +499,11 @@ JOBRUNR_DASHBOARD_PORT=8001
 ```
 
 **說明**：`application.yml` 已內建預設值，未提供環境變數時使用本機開發的合理預設。
+
+### JobRunr 排程設定
+
+- `JOBRUNR_SCHEDULER_ENABLED`: 啟用或停用 JobRunr 排程功能，預設為 `true`。
+- `JOBRUNR_BACKGROUND_ENABLED`: 啟用或停用 JobRunr 背景任務執行，預設為 `true`。
 
 ---
 
@@ -543,3 +667,4 @@ open build/reports/tests/test/index.html
 - Mock 外部服務端點
 
 ---
+

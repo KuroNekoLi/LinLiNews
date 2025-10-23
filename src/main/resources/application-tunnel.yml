@@ -49,6 +49,7 @@ spring:
 # Full-Text RSS 配置
 fulltextrss:
   base-url: ${FULLTEXTRSS_BASE_URL:http://localhost:8085}
+  enabled: ${FULLTEXTRSS_ENABLED:true}
   timeout: 60000                     # 1 分鐘超時
 
 # OpenAI 配置 (針對隧道環境優化)

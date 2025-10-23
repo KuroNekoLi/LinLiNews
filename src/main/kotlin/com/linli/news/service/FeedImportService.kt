@@ -1,6 +1,7 @@
 package com.linli.news.service
 
 import com.fasterxml.jackson.databind.JsonNode
+import com.linli.news.config.FullTextRssProperties
 import com.linli.news.domain.Article
 import com.linli.news.domain.ArticleSource
 import com.linli.news.integration.FullTextRssClient
@@ -17,7 +18,8 @@ import java.util.regex.Pattern
 class FeedImportService(
     private val fullTextRssClient: FullTextRssClient,
     private val articleRepository: ArticleRepository,
-    private val articleSourceRepository: ArticleSourceRepository
+    private val articleSourceRepository: ArticleSourceRepository,
+    private val fullTextRssProperties: FullTextRssProperties
 ) {
     private val logger = LoggerFactory.getLogger(FeedImportService::class.java)
 
@@ -31,6 +33,12 @@ class FeedImportService(
      */
     @Transactional
     fun importFromFeed(rssUrl: String, sourceName: String = "CNN", section: String? = null): Int {
+        // 檢查 Full-Text RSS 是否啟用
+        if (!fullTextRssProperties.enabled) {
+            logger.warn("Full-Text RSS is disabled. Skipping feed import from: $rssUrl")
+            return 0
+        }
+
         // 查找或創建 ArticleSource，確保使用正確的來源名稱和區塊
         val source = articleSourceRepository.findByRssUrl(rssUrl)?.apply {
             // 更新現有來源的名稱和區塊（如果有變化）

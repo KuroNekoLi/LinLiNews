@@ -1,7 +1,7 @@
 package com.linli.news.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.linli.news.domain.Article
+import com.linli.news.config.FullTextRssProperties
 import com.linli.news.domain.ArticleSource
 import com.linli.news.integration.FullTextRssClient
 import com.linli.news.repository.ArticleRepository
@@ -9,7 +9,6 @@ import com.linli.news.repository.ArticleSourceRepository
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -27,16 +26,21 @@ class FeedImportServiceTest {
     private val fullTextRssClient = mockk<FullTextRssClient>()
     private val articleRepository = mockk<ArticleRepository>(relaxed = true)
     private val articleSourceRepository = mockk<ArticleSourceRepository>()
+    private val fullTextRssProperties = mockk<FullTextRssProperties>()
 
     private val service = FeedImportService(
         fullTextRssClient = fullTextRssClient,
         articleRepository = articleRepository,
-        articleSourceRepository = articleSourceRepository
+        articleSourceRepository = articleSourceRepository,
+        fullTextRssProperties = fullTextRssProperties
     )
 
     @Test
     fun `should import valid articles and filter invalid ones`() {
         val rssUrl = "https://feeds.example.com/rss.xml"
+
+        // Mock Full-Text RSS 為啟用狀態
+        every { fullTextRssProperties.enabled } returns true
 
         // ArticleSource 行為
         val savedSource = ArticleSource(name = "BBC", rssUrl = rssUrl, section = "news").apply { id = 1 }
