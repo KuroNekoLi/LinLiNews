@@ -23,14 +23,12 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
-    implementation("org.flywaydb:flyway-core")
-    runtimeOnly("org.flywaydb:flyway-mysql")
     implementation("org.jobrunr:jobrunr-spring-boot-3-starter:7.3.0")
     // OpenAPI/Swagger UI for auto-generated API docs
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
     // HTTP client utilities (already in Spring), JSON handled by Jackson
-    runtimeOnly("com.mysql:mysql-connector-j")
-
+    implementation("org.hibernate.orm:hibernate-community-dialects:6.5.3.Final")
+    runtimeOnly("org.xerial:sqlite-jdbc:3.45.3.0")
     // Testing dependencies
     testImplementation("org.springframework.boot:spring-boot-starter-test") {
         exclude(group = "org.mockito") // 使用 MockK 取代 Mockito
@@ -43,7 +41,6 @@ dependencies {
     testImplementation("io.kotest.extensions:kotest-extensions-spring:1.1.3") // Kotest Spring extension
     testImplementation("com.h2database:h2") // H2 for in-memory database testing
     testImplementation("org.testcontainers:testcontainers:1.19.3") // Testcontainers (可選)
-    testImplementation("org.testcontainers:mysql:1.19.3") // MySQL Testcontainers
     testImplementation("org.testcontainers:junit-jupiter:1.19.3") // Testcontainers JUnit5
 }
 

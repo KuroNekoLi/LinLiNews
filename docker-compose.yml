@@ -1,24 +1,5 @@
+version: '3.1'
 services:
-  mysql:
-    image: mysql:8.1
-    container_name: linli-mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpwd
-      MYSQL_DATABASE: linli_news
-      MYSQL_USER: linli
-      MYSQL_PASSWORD: linlipwd
-    ports:
-      - "3307:3306"
-    command: [ "mysqld", "--default-authentication-plugin=mysql_native_password", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci" ]
-    volumes:
-      - mysql-data:/var/lib/mysql
-    healthcheck:
-      test: [ "CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-prootpwd" ]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-    restart: unless-stopped
-
   fulltextrss:
     image: heussd/fivefilters-full-text-rss:latest
     container_name: fulltextrss
@@ -31,5 +12,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  mysql-data:
   rss-cache:
