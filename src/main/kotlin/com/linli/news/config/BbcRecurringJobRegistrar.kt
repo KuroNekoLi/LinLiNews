@@ -30,79 +30,81 @@ class BbcRecurringJobRegistrar(
     /**
      * 啟動時註冊 JobRunr 的定期任務
      *
-     * 統一頻率設定：
-     * - 主分類（news、world、uk、technology）：每 30 分鐘
-     * - 子分類（其他區塊）：每 60 分鐘
+     * 改為一週執行一次：
+     * - 所有 BBC 主分類與子分類，每 7 天自動匯入一次（用於節省資源）
      */
     @PostConstruct
     fun registerRecurringJobs() {
         logger.info("Registering BBC recurring jobs with JobRunr ...")
 
-        // Main sections (every 30 minutes)
+        // 設定一週（7 天）為間隔
+        val jobInterval = Duration.ofDays(7)
+
+        // Main sections (every 7 days)
         jobScheduler.scheduleRecurrently<BbcImportJobService>(
             "bbcNews",
-            Duration.ofMinutes(30)
+            jobInterval
         ) { s -> s.importBbcNews() }
         jobScheduler.scheduleRecurrently<BbcImportJobService>(
             "bbcWorld",
-            Duration.ofMinutes(30)
+            jobInterval
         ) { s -> s.importBbcWorld() }
-        jobScheduler.scheduleRecurrently<BbcImportJobService>("bbcUk", Duration.ofMinutes(30)) { s -> s.importBbcUk() }
+        jobScheduler.scheduleRecurrently<BbcImportJobService>("bbcUk", jobInterval) { s -> s.importBbcUk() }
         jobScheduler.scheduleRecurrently<BbcImportJobService>(
             "bbcTechnology",
-            Duration.ofMinutes(30)
+            jobInterval
         ) { s -> s.importBbcTechnology() }
 
-        // Sub sections (every 60 minutes)
+        // Sub sections (every 7 days)
         jobScheduler.scheduleRecurrently<BbcImportJobService>(
             "bbcBusiness",
-            Duration.ofMinutes(60)
+            jobInterval
         ) { s -> s.importBbcBusiness() }
         jobScheduler.scheduleRecurrently<BbcImportJobService>(
             "bbcHealth",
-            Duration.ofMinutes(60)
+            jobInterval
         ) { s -> s.importBbcHealth() }
         jobScheduler.scheduleRecurrently<BbcImportJobService>(
             "bbcScienceAndEnvironment",
-            Duration.ofMinutes(60)
+            jobInterval
         ) { s -> s.importBbcScienceEnv() }
         jobScheduler.scheduleRecurrently<BbcImportJobService>(
             "bbcEntertainmentAndArts",
-            Duration.ofMinutes(60)
+            jobInterval
         ) { s -> s.importBbcEntertainmentArts() }
         jobScheduler.scheduleRecurrently<BbcImportJobService>(
             "bbcPolitics",
-            Duration.ofMinutes(60)
+            jobInterval
         ) { s -> s.importBbcPolitics() }
         jobScheduler.scheduleRecurrently<BbcImportJobService>(
             "bbcEducation",
-            Duration.ofMinutes(60)
+            jobInterval
         ) { s -> s.importBbcEducation() }
 
-        // World sub sections (every 60 minutes)
+        // World sub sections (every 7 days)
         jobScheduler.scheduleRecurrently<BbcImportJobService>(
             "bbcWorldAfrica",
-            Duration.ofMinutes(60)
+            jobInterval
         ) { s -> s.importBbcWorldAfrica() }
         jobScheduler.scheduleRecurrently<BbcImportJobService>(
             "bbcWorldAsia",
-            Duration.ofMinutes(60)
+            jobInterval
         ) { s -> s.importBbcWorldAsia() }
         jobScheduler.scheduleRecurrently<BbcImportJobService>(
             "bbcWorldEurope",
-            Duration.ofMinutes(60)
+            jobInterval
         ) { s -> s.importBbcWorldEurope() }
         jobScheduler.scheduleRecurrently<BbcImportJobService>(
             "bbcWorldMiddleEast",
-            Duration.ofMinutes(60)
+            jobInterval
         ) { s -> s.importBbcWorldMiddleEast() }
         jobScheduler.scheduleRecurrently<BbcImportJobService>(
             "bbcWorldUsAndCanada",
-            Duration.ofMinutes(60)
+            jobInterval
         ) { s -> s.importBbcWorldUsCanada() }
         jobScheduler.scheduleRecurrently<BbcImportJobService>(
             "bbcWorldLatinAmerica",
-            Duration.ofMinutes(60)
+            jobInterval
         ) { s -> s.importBbcWorldLatinAmerica() }
 
         logger.info("BBC recurring jobs registered.")
