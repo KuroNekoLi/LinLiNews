@@ -9,7 +9,7 @@ fulltextrss:
 
 spring:
   datasource:
-    url: jdbc:sqlite:./linli_news.db?foreign_keys=on&busy_timeout=10000
+    url: jdbc:sqlite:/data/linli_news.db?foreign_keys=on&busy_timeout=10000
     driver-class-name: org.sqlite.JDBC
     hikari:
       maximum-pool-size: 5

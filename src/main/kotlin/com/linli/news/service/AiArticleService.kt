@@ -8,6 +8,11 @@ import com.linli.news.model.AiArticleDetail
 import com.linli.news.model.Explanation
 import com.linli.news.repository.ArticleAiRepository
 import com.linli.news.repository.ArticleRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
@@ -231,15 +236,17 @@ class AiArticleService(
     }
 
     /**
-     * 隨機取得 n 篇文章並自動進行 AI 處理
+     * 隨機取得 n 篇文章並自動進行 AI 處理（使用 Coroutine 最佳化）
      *
-     * 從資料庫隨機抽取指定數量的文章，若文章尚未經 AI 處理，會自動進行處理並儲存。
-     * 此方法適用於需要確保取得的文章都有 AI 解析結果的場景。
+     * 從資料庫隨機抽取指定數量的文章：
+     * - 查詢階段：可同時多個並行查詢（readOnly transaction）
+     * - AI 處理階段：可並行呼叫 OpenAI / HTML 最佳化（不佔用 DB 連線）
+     * - 寫入階段：透過 Semaphore 確保同一時間只有「一個」寫入發生（單寫入、多讀取）
      *
      * @param count 要取得的文章數量（實際數量可能少於請求數量，如處理失敗或無可用文章）
      * @param source 來源名稱過濾（可選，例如 BBC、CNN）
      * @param section 區塊名稱過濾（可選，例如 news、world、technology）
-     * @return Triple of (已處理的 AI 文章清單, 符合條件的可用文章總數, 本次新處理的文章數)
+     * @return Triple of (已處理的 AI 文章清單, 符合條件的可用文章總數, 本次成功處理的文章數)
      */
     fun randomWithProcessing(count: Int, source: String?, section: String?): Triple<List<ArticleAi>, Int, Int> {
         val page = PageRequest.of(0, 10000)
@@ -266,22 +273,111 @@ class AiArticleService(
             allArticles.shuffled().take(count)
         }
 
-        val result = mutableListOf<ArticleAi>()
-        var processedCount = 0
-
         logger.info(
             "Starting random processing of {} articles (source={}, section={})",
             selectedArticles.size, source ?: "any", section ?: "any"
         )
 
-        for (article in selectedArticles) {
-            try {
-                val aiArticle = getOrProcessThreadSafe(requireNotNull(article.id) { "Article must have an ID" })
-                result.add(aiArticle)
-                processedCount++
-            } catch (e: Exception) {
-                logger.error("Failed to process article ${article.id}: ${e.message}", e)
+        val result = mutableListOf<ArticleAi>()
+        var processedCount = 0
+
+        // 單寫入、多查詢：寫入透過 Semaphore 控制，同時間只允許一個 DB 寫入
+        runBlocking {
+            val writeSemaphore = Semaphore(1)
+
+            val jobs = selectedArticles.map { article ->
+                async(Dispatchers.IO) {
+                    val articleId = requireNotNull(article.id) { "Article must have an ID" }
+                    try {
+                        // 1. 先查是否已經有 AI 結果（readOnly transaction，可並行）
+                        val existing = findExistingAiArticle(articleId)
+                        val aiArticle = if (existing != null) {
+                            existing
+                        } else {
+                            // 2. 查原始文章內容（readOnly transaction，可並行）
+                            val fullArticle = findArticleById(articleId)
+                            require(!fullArticle.contentHtml.isNullOrBlank()) {
+                                "Article has no contentHtml; please fetch full content first"
+                            }
+                            val textContent = extractTextFromHtml(fullArticle.contentHtml)
+                            require(!textContent.isNullOrBlank()) {
+                                "Article textContent is empty after HTML extraction"
+                            }
+
+                            // 3. AI 處理（不在 DB 交易內，可並行）
+                            val json: JsonNode = try {
+                                val aiStart = System.currentTimeMillis()
+                                val r = aiProcessor.process(fullArticle.title, textContent)
+                                logger.info(
+                                    "AI processing completed in {}ms for article ID {} (randomWithProcessing)",
+                                    System.currentTimeMillis() - aiStart,
+                                    articleId
+                                )
+                                r
+                            } catch (e: AiQuotaException) {
+                                logger.error("AI quota exceeded for article ID {}: {}", articleId, e.message)
+                                throw ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, e.message, e)
+                            } catch (e: Exception) {
+                                logger.error(
+                                    "Error during AI processing for article ID {} (randomWithProcessing): {}",
+                                    articleId, e.message, e
+                                )
+                                throw e
+                            }
+
+                            val optimizedResult = try {
+                                val htmlStart = System.currentTimeMillis()
+                                val r = aiProcessor.optimizeHtml(fullArticle.title, fullArticle.contentHtml!!)
+                                logger.info(
+                                    "HTML optimization completed in {}ms for article ID {} (randomWithProcessing)",
+                                    System.currentTimeMillis() - htmlStart,
+                                    articleId
+                                )
+                                r
+                            } catch (e: AiQuotaException) {
+                                logger.error(
+                                    "AI quota exceeded during HTML optimization for article ID {}: {}",
+                                    articleId,
+                                    e.message
+                                )
+                                throw ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, e.message, e)
+                            } catch (e: Exception) {
+                                logger.error(
+                                    "Error during HTML optimization for article ID {} (randomWithProcessing): {}",
+                                    articleId,
+                                    e.message,
+                                    e
+                                )
+                                throw e
+                            }
+
+                            // 4. 寫入：透過 Semaphore 確保同一時間只有一個寫入
+                            writeSemaphore.withPermit {
+                                saveAiResult(fullArticle, json, optimizedResult)
+                            }
+                        }
+
+                        synchronized(result) {
+                            result.add(aiArticle)
+                            processedCount++
+                        }
+                    } catch (e: ResponseStatusException) {
+                        // 保留 429 等 HTTP 狀態錯誤給上一層處理
+                        logger.error(
+                            "Failed to process article {} with HTTP status {}: {}",
+                            articleId,
+                            e.statusCode,
+                            e.reason,
+                            e
+                        )
+                        throw e
+                    } catch (e: Exception) {
+                        logger.error("Failed to process article {}: {}", articleId, e.message, e)
+                    }
+                }
             }
+
+            jobs.forEach { job -> job.await() }
         }
 
         logger.info("Completed random processing: processed {}/{} articles", processedCount, selectedArticles.size)
