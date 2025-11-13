@@ -16,14 +16,8 @@ spring:
   flyway:
     enabled: false
 
-org:
-  jobrunr:
-    job-scheduler:
-      enabled: false
-    background-job-server:
-      enabled: false
-    dashboard:
-      enabled: false
+scheduler:
+  enabled: false
 
 fulltextrss:
   base-url: http://localhost:9999

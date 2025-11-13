@@ -6,6 +6,7 @@ import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.stereotype.Repository
 import java.time.OffsetDateTime
+import java.time.ZonedDateTime
 
 /**
  * 文章資料庫存取介面
@@ -21,6 +22,15 @@ interface ArticleRepository : JpaRepository<Article, Long> {
      * @return 文章實體（若存在）
      */
     fun findByOriginalUrl(originalUrl: String): Article?
+
+    /**
+     * 根據標題和發布時間查詢文章
+     *
+     * @param title 標題
+     * @param publishedAt 發布時間
+     * @return 文章實體（若存在）
+     */
+    fun findByTitleAndPublishedAt(title: String, publishedAt: ZonedDateTime): Article?
 
     /**
      * 根據區塊查詢文章（分頁）

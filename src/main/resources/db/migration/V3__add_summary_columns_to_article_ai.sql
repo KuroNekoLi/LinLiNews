@@ -1,4 +1,4 @@
--- Add columns for AI-generated summaries
-ALTER TABLE article_ai
-    ADD COLUMN summary_en LONGTEXT NULL,
-    ADD COLUMN summary_zh LONGTEXT NULL;
+-- V3__add_summary_columns_to_article_ai.sql
+-- This is a placeholder migration to maintain sequential version numbers.
+-- The migration doesn't contain any SQL statements as relevant columns were already added in V1.
+-- DO NOT REMOVE THIS FILE: It's needed for Flyway versioning sequence.

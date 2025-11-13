@@ -1,9 +1,6 @@
 server:
   port: ${PORT:8080}
-  # 支援反向代理標頭（Zeabur、Nginx 等會自動設定 X-Forwarded-* 標頭）
-  # 這讓 Swagger 能自動偵測正確的生產環境 URL
   forward-headers-strategy: framework
-  # Swagger 伺服器 URL（生產環境請設定為實際網址，例如：https://your-domain.zeabur.app）（選填）
   url: ${SERVER_URL:}
 
 fulltextrss:
@@ -12,31 +9,42 @@ fulltextrss:
 
 spring:
   datasource:
-    url: jdbc:sqlite:./linli_news.db?busy_timeout=10000
+    url: jdbc:sqlite:./linli_news.db?foreign_keys=on&busy_timeout=10000
     driver-class-name: org.sqlite.JDBC
     hikari:
-      maximum-pool-size: 2
+      maximum-pool-size: 5
       minimum-idle: 1
+      connection-timeout: 60000
+      idle-timeout: 300000
+      max-lifetime: 1800000
       connection-init-sql: "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;"
   jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
     hibernate:
-      ddl-auto: create
+      ddl-auto: update
     properties:
       hibernate:
         dialect: org.hibernate.community.dialect.SQLiteDialect
+        format_sql: false
+        use_sql_comments: false
+        javax.persistence.validation.mode: none
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 9
+    out-of-order: true
+    validate-on-migrate: false
+    clean-disabled: true
+  
   jackson:
     deserialization:
       fail-on-unknown-properties: false
 
-org:
-  jobrunr:
-    job-scheduler:
-      enabled: ${JOBRUNR_SCHEDULER_ENABLED:true}
-    background-job-server:
-      enabled: ${JOBRUNR_BACKGROUND_ENABLED:true}
-    dashboard:
-      enabled: ${JOBRUNR_DASHBOARD_ENABLED:false}
-      port: ${JOBRUNR_DASHBOARD_PORT:8001}
+# 任務排程設定
+scheduler:
+  enabled: ${SCHEDULER_ENABLED:true}
 
 openai:
   api-key: ${OPENAI_API_KEY:}

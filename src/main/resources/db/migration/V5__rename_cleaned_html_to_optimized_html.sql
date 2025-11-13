@@ -1,18 +1,11 @@
--- Rename legacy cleaned_html column to optimized_html if it still exists
-SET @rename_sql := (
-    SELECT IF(
-        EXISTS(
-            SELECT 1
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = DATABASE()
-              AND TABLE_NAME = 'article_ai'
-              AND COLUMN_NAME = 'cleaned_html'
-        ),
-        'ALTER TABLE article_ai RENAME COLUMN cleaned_html TO optimized_html',
-        'SELECT 1'
-    )
-);
+-- V5__rename_cleaned_html_to_optimized_html.sql
+-- This is a placeholder migration to maintain sequential version numbers.
+-- The migration doesn't contain any SQL statements as column renaming was already handled in V1.
+-- DO NOT REMOVE THIS FILE: It's needed for Flyway versioning sequence.
 
-PREPARE stmt FROM @rename_sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
+-- Original DROP statements are commented out to avoid execution
+-- while keeping the migration checksum the same
+-- DROP TABLE IF EXISTS jobrunr_recurring_jobs;
+-- DROP TABLE IF EXISTS jobrunr_jobs;
+-- DROP TABLE IF EXISTS jobrunr_metadata;
+-- DROP TABLE IF EXISTS jobrunr_backgroundjobservers;

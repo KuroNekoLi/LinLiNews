@@ -24,21 +24,26 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: create
+      ddl-auto: update
     properties:
       hibernate:
         dialect: org.hibernate.community.dialect.SQLiteDialect
         # 查詢超時設定
         query.timeout: 300000        # 5 分鐘查詢超時
+        javax.persistence.validation.mode: none
 
   jackson:
     deserialization:
       fail-on-unknown-properties: false
 
   flyway:
-    enabled: ${SPRING_FLYWAY_ENABLED:true}
+    enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
+    baseline-version: 9
+    out-of-order: true
+    validate-on-migrate: false
+    clean-disabled: true
 
   # Web MVC 超時設定
   mvc:
@@ -51,6 +56,10 @@ fulltextrss:
   enabled: ${FULLTEXTRSS_ENABLED:true}
   timeout: 60000                     # 1 分鐘超時
 
+# 任務排程設定
+scheduler:
+  enabled: ${SCHEDULER_ENABLED:true}
+
 # OpenAI 配置 (針對隧道環境優化)
 openai:
   api-key: ${OPENAI_API_KEY:}
@@ -59,17 +68,6 @@ openai:
   max-tokens: ${OPENAI_MAX_TOKENS:16000}
   timeout: 240000                    # 4 分鐘 OpenAI API 超時 (留 1 分鐘給隧道處理)
   explanation-fallback-enabled: ${OPENAI_EXPLANATION_FALLBACK_ENABLED:true}
-
-# JobRunr 配置
-org:
-  jobrunr:
-    job-scheduler:
-      enabled: ${JOBRUNR_SCHEDULER_ENABLED:true}
-    background-job-server:
-      enabled: ${JOBRUNR_BACKGROUND_ENABLED:true}
-    dashboard:
-      enabled: ${JOBRUNR_DASHBOARD_ENABLED:false}
-      port: ${JOBRUNR_DASHBOARD_PORT:8001}
 
 # 日誌配置
 logging:

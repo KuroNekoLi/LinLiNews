@@ -1,3 +1,4 @@
--- Add column for AI-generated traditional Chinese HTML
-ALTER TABLE article_ai
-    ADD COLUMN optimized_zh_html LONGTEXT NULL;
+-- V4__add_optimized_zh_html_to_article_ai.sql
+-- This is a placeholder migration to maintain sequential version numbers.
+-- The migration doesn't contain any SQL statements as column naming was already handled in V1.
+-- DO NOT REMOVE THIS FILE: It's needed for Flyway versioning sequence.

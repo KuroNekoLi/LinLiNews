@@ -9,7 +9,6 @@ import com.linli.news.repository.ArticleRepository
 import com.linli.news.repository.ArticleSourceRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.regex.Pattern
@@ -17,8 +16,7 @@ import java.util.regex.Pattern
 @Service
 class FeedImportService(
     private val fullTextRssClient: FullTextRssClient,
-    private val articleRepository: ArticleRepository,
-    private val articleSourceRepository: ArticleSourceRepository,
+    private val feedImportTxService: FeedImportTxService,
     private val fullTextRssProperties: FullTextRssProperties
 ) {
     private val logger = LoggerFactory.getLogger(FeedImportService::class.java)
@@ -31,7 +29,6 @@ class FeedImportService(
      * @param section 區塊（如 world/technology）
      * @return 匯入筆數
      */
-    @Transactional
     fun importFromFeed(rssUrl: String, sourceName: String = "CNN", section: String? = null): Int {
         // 檢查 Full-Text RSS 是否啟用
         if (!fullTextRssProperties.enabled) {
@@ -40,15 +37,7 @@ class FeedImportService(
         }
 
         // 查找或創建 ArticleSource，確保使用正確的來源名稱和區塊
-        val source = articleSourceRepository.findByRssUrl(rssUrl)?.apply {
-            // 更新現有來源的名稱和區塊（如果有變化）
-            if (this.name != sourceName || this.section != section) {
-                logger.debug("Updating source name from '${this.name}' to '$sourceName' and section from '${this.section}' to '$section'")
-                this.name = sourceName
-                this.section = section
-                articleSourceRepository.save(this)
-            }
-        } ?: articleSourceRepository.save(ArticleSource(name = sourceName, rssUrl = rssUrl, section = section))
+        val source = feedImportTxService.getOrCreateSource(sourceName, rssUrl, section)
 
         val json = fullTextRssClient.fetchFeedJson(rssUrl)
         val items = extractItems(json)
@@ -61,13 +50,6 @@ class FeedImportService(
 
             if (link == null) {
                 logger.debug("Skipping item $index - no link found")
-                continue
-            }
-
-            // 去重
-            val existing = articleRepository.findByOriginalUrl(link)
-            if (existing != null) {
-                logger.debug("Skipping item $index - duplicate URL: $link")
                 continue
             }
 
@@ -105,37 +87,40 @@ class FeedImportService(
             )
 
             try {
-                articleRepository.save(article)
-                imported++
-                logger.info("Successfully imported article from $sourceName/${section}: $title")
+                // 使用新的交易服務儲存文章
+                val saved = feedImportTxService.saveArticleIfNew(article)
+                if (saved) {
+                    imported++
+                    logger.info("Successfully imported article from $sourceName/${section}: $title")
 
-                // 檢查是否有完整內容
-                if (content != null && content.length > 200) {
-                    logger.debug("Article has full content (${content.length} chars)")
-                } else {
-                    logger.debug("Article has limited content, attempting to fetch full text...")
+                    // 檢查是否有完整內容
+                    if (content != null && content.length > 200) {
+                        logger.debug("Article has full content (${content.length} chars)")
+                    } else {
+                        logger.debug("Article has limited content, attempting to fetch full text...")
 
-                    // 嘗試使用 Full-Text RSS extract API 取得完整內容
-                    try {
-                        val fullTextResponse = fullTextRssClient.fetchArticleFullText(link)
-                        val responseContent = fullTextResponse.content
-                        if (!responseContent.isNullOrBlank() && responseContent.length > 200) {
-                            article.contentHtml = responseContent
-                            article.author = fullTextResponse.author ?: article.author
-                            article.language = fullTextResponse.language ?: article.language
-                            article.wordCount = fullTextResponse.wordCount ?: article.wordCount
-                            article.effectiveUrl = fullTextResponse.url ?: article.effectiveUrl
+                        // 嘗試使用 Full-Text RSS extract API 取得完整內容
+                        try {
+                            val fullTextResponse = fullTextRssClient.fetchArticleFullText(link)
+                            val responseContent = fullTextResponse.content
+                            if (!responseContent.isNullOrBlank() && responseContent.length > 200) {
+                                article.contentHtml = responseContent
+                                article.author = fullTextResponse.author ?: article.author
+                                article.language = fullTextResponse.language ?: article.language
+                                article.wordCount = fullTextResponse.wordCount ?: article.wordCount
+                                article.effectiveUrl = fullTextResponse.url ?: article.effectiveUrl
 
-                            articleRepository.save(article)
-                            logger.info("Successfully fetched and saved full content (${responseContent.length} chars)")
-                        } else {
-                            logger.debug("Full-text extraction returned limited content")
+                                // 使用新的交易服務更新文章內容
+                                feedImportTxService.updateArticleContent(article)
+                                logger.info("Successfully fetched and saved full content (${responseContent.length} chars)")
+                            } else {
+                                logger.debug("Full-text extraction returned limited content")
+                            }
+                        } catch (e: Exception) {
+                            logger.warn("Failed to fetch full content: ${e.message}")
                         }
-                    } catch (e: Exception) {
-                        logger.warn("Failed to fetch full content: ${e.message}")
                     }
                 }
-
             } catch (e: Exception) {
                 logger.error("Failed to save article: ${e.message}", e)
             }
