@@ -12,23 +12,22 @@ server:
 spring:
   # 數據庫連接池優化
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3307/linli_news?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=UTC&createDatabaseIfNotExist=true&socketTimeout=300000&connectTimeout=60000}
-    username: ${SPRING_DATASOURCE_USERNAME:root}
-    password: ${SPRING_DATASOURCE_PASSWORD:rootpwd}
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:sqlite:./linli_news.db?busy_timeout=10000
+    driver-class-name: org.sqlite.JDBC
     hikari:
       connection-timeout: 60000      # 1 分鐘連接超時
       idle-timeout: 300000           # 5 分鐘空閒超時
       max-lifetime: 1800000          # 30 分鐘最大生命週期
-      maximum-pool-size: 20
-      minimum-idle: 5
+      maximum-pool-size: 2           # SQLite 使用有限的連接池大小
+      minimum-idle: 1
+      connection-init-sql: "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;"  # WAL 模式和異步寫入
 
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: create
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.MySQLDialect
+        dialect: org.hibernate.community.dialect.SQLiteDialect
         # 查詢超時設定
         query.timeout: 300000        # 5 分鐘查詢超時
 
@@ -78,5 +77,7 @@ logging:
     com.linli.news: INFO
     org.springframework.web: INFO
     org.hibernate.SQL: WARN
+    org.sqlite: DEBUG
+    com.zaxxer.hikari: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

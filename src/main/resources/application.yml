@@ -12,8 +12,12 @@ fulltextrss:
 
 spring:
   datasource:
-    url: jdbc:sqlite:./linli_news.db
+    url: jdbc:sqlite:./linli_news.db?busy_timeout=10000
     driver-class-name: org.sqlite.JDBC
+    hikari:
+      maximum-pool-size: 2
+      minimum-idle: 1
+      connection-init-sql: "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;"
   jpa:
     hibernate:
       ddl-auto: create

@@ -4,14 +4,14 @@ import org.jobrunr.jobs.JobId
 import org.jobrunr.jobs.annotations.Job
 import org.jobrunr.scheduling.JobScheduler
 import org.slf4j.LoggerFactory
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Service
 
 /**
  * 背景任務服務 - 展示正確的 JobRunr 使用方式
  *
  * 重要：不要直接提交 Kotlin lambda 表達式或函數引用給 JobRunr！
- * 只有在 JobScheduler bean 存在時才會被創建
+ * 只有在 JobRunr scheduler 啟用時才會被創建
  *
  * 正確方式：
  * 1. 在 Spring Service 中定義 job 方法
@@ -19,7 +19,12 @@ import org.springframework.stereotype.Service
  * 3. 確保 job 方法的 class 可以被 Spring 容器解析
  */
 @Service
-@ConditionalOnBean(JobScheduler::class)
+@ConditionalOnProperty(
+    prefix = "org.jobrunr.job-scheduler",
+    name = ["enabled"],
+    havingValue = "true",
+    matchIfMissing = true // 預設為 true，保持向後兼容
+)
 class BackgroundJobService(
     private val feedImportService: FeedImportService,
     private val jobScheduler: JobScheduler

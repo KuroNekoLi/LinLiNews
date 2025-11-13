@@ -2,19 +2,21 @@ package com.linli.news.service
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.linli.news.domain.Article
 import com.linli.news.domain.ArticleAi
 import com.linli.news.model.AiArticleDetail
 import com.linli.news.model.Explanation
 import com.linli.news.repository.ArticleAiRepository
 import com.linli.news.repository.ArticleRepository
+import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.server.ResponseStatusException
-import org.springframework.http.HttpStatus
+import java.util.concurrent.ConcurrentHashMap
 import java.util.regex.Pattern
-import org.slf4j.LoggerFactory
 
 @Service
 class AiArticleService(
@@ -27,62 +29,187 @@ class AiArticleService(
     private val objectMapper = ObjectMapper()
     private val htmlTagPattern: Pattern = Pattern.compile("<[^>]*>")
 
+    @Transactional(readOnly = true)
     fun listProcessed(page: Int, size: Int): Page<ArticleAi> {
         return articleAiRepository.findAll(PageRequest.of(page, size))
     }
 
-    @Transactional
-    fun getOrProcess(articleId: Long): ArticleAi {
-        val existing = articleAiRepository.findByArticle_Id(articleId)
-        if (existing.isPresent) return existing.get()
+    /**
+     * 用於同一篇 article 處理時互斥（避免同時寫入同一ID）
+     */
+    private val locks = ConcurrentHashMap<Long, Any>()
 
-        val article = articleRepository.findById(articleId).orElseThrow()
-        require(!article.contentHtml.isNullOrBlank()) { "Article has no contentHtml; please fetch full content first" }
+    fun getOrProcess(articleId: Long): ArticleAi = getOrProcessThreadSafe(articleId)
 
-        val textContent = extractTextFromHtml(article.contentHtml)
-        require(!textContent.isNullOrBlank()) { "Article textContent is empty after HTML extraction" }
-
-        val json: JsonNode = try {
-            aiProcessor.process(article.title, textContent)
-        } catch (e: AiQuotaException) {
-            // bubble up as 429 to controller layer
-            throw ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, e.message, e)
+    fun getOrProcessThreadSafe(articleId: Long): ArticleAi {
+        val lock = locks.computeIfAbsent(articleId) { Any() }
+        synchronized(lock) {
+            try {
+                return getOrProcessNoLock(articleId)
+            } finally {
+                // 移除使用過的鎖，避免 map 不必要的擴大
+                locks.remove(articleId)
+            }
         }
-
-        val optimizedResult = try {
-            aiProcessor.optimizeHtml(article.title, article.contentHtml!!)
-        } catch (e: AiQuotaException) {
-            throw ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, e.message, e)
-        }
-
-        val primaryExplanationNode = json.path("explanation")
-        val hasPrimaryExplanation =
-            !primaryExplanationNode.isMissingNode && !primaryExplanationNode.isNull && primaryExplanationNode.isObject
-        val explanationJson = if (hasPrimaryExplanation) primaryExplanationNode.toString() else "{}"
-
-        val entity = ArticleAi(
-            article = article,
-            title = json.path("title").asText(null),
-            titleZh = json.path("title_zh").asText(null),
-            optimizedHtml = optimizedResult.optimizedHtml,
-            cleanedText = json.path("cleaned_text").asText(null),
-            cleanedTextZh = json.path("cleaned_text_zh").asText(null),
-            summaryEn = json.path("summary_en").asText(null),
-            summaryZh = json.path("summary_zh").asText(null),
-            explanation = explanationJson,
-            optimizedZhHtml = optimizedResult.optimizedZhHtml
-        )
-        return articleAiRepository.save(entity)
     }
 
     /**
-     * 隨機取得 n 篇 AI 文章
-     *
-     * @param count 文章數量
-     * @param source 來源過濾
-     * @param section 區塊過濾
-     * @return Pair of (隨機文章清單, 可用文章總數)
+     * 查詢 ArticleAi 記錄（使用 readOnly = true 減少事務鎖）
      */
+    @Transactional(readOnly = true)
+    fun findExistingAiArticle(articleId: Long): ArticleAi? {
+        logger.debug("Finding existing AI article for ID {}", articleId)
+        return articleAiRepository.findByArticle_Id(articleId).orElse(null)
+    }
+
+    /**
+     * 查詢 Article 記錄（使用 readOnly = true 減少事務鎖）
+     */
+    @Transactional(readOnly = true)
+    fun findArticleById(articleId: Long): Article {
+        logger.debug("Finding article by ID {}", articleId)
+        return articleRepository.findById(articleId).orElseThrow {
+            logger.warn("Article not found with ID: {}", articleId)
+            IllegalArgumentException("Article not found with id: $articleId")
+        }
+    }
+
+    fun getOrProcessNoLock(articleId: Long): ArticleAi {
+        val startTime = System.currentTimeMillis()
+        logger.info("Starting AI processing for article ID {}", articleId)
+
+        // 1. 先查有無現成結果（DB簡短 transaction）
+        val existing = findExistingAiArticle(articleId)
+        if (existing != null) {
+            logger.info("Found existing AI processed article for ID {}", articleId)
+            return existing
+        }
+
+        // 2. 取得文章內容
+        val article = findArticleById(articleId)
+        require(!article.contentHtml.isNullOrBlank()) { "Article has no contentHtml; please fetch full content first" }
+        val textContent = extractTextFromHtml(article.contentHtml)
+        require(!textContent.isNullOrBlank()) { "Article textContent is empty after HTML extraction" }
+
+        // 3. AI 處理部分（長流程，但不涉及 DB transaction）
+        logger.info("Calling AI processor for article ID {}: '{}'", articleId, article.title)
+        val json: JsonNode = try {
+            val aiStart = System.currentTimeMillis()
+            val result = aiProcessor.process(article.title, textContent)
+            logger.info(
+                "AI processing completed in {}ms for article ID {}",
+                System.currentTimeMillis() - aiStart,
+                articleId
+            )
+            result
+        } catch (e: AiQuotaException) {
+            logger.error("AI quota exceeded for article ID {}: {}", articleId, e.message)
+            throw ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, e.message, e)
+        } catch (e: Exception) {
+            logger.error("Error during AI processing for article ID {}: {}", articleId, e.message, e)
+            throw e
+        }
+
+        val optimizedResult = try {
+            val htmlStart = System.currentTimeMillis()
+            val result = aiProcessor.optimizeHtml(article.title, article.contentHtml!!)
+            logger.info(
+                "HTML optimization completed in {}ms for article ID {}",
+                System.currentTimeMillis() - htmlStart,
+                articleId
+            )
+            result
+        } catch (e: AiQuotaException) {
+            logger.error("AI quota exceeded during HTML optimization for article ID {}: {}", articleId, e.message)
+            throw ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, e.message, e)
+        } catch (e: Exception) {
+            logger.error("Error during HTML optimization for article ID {}: {}", articleId, e.message, e)
+            throw e
+        }
+
+        // 4. 短 transaction DB 寫入
+        val result = saveAiResult(article, json, optimizedResult)
+
+        val totalTime = System.currentTimeMillis() - startTime
+        logger.info("Total AI processing and saving completed in {}ms for article ID {}", totalTime, articleId)
+
+        return result
+    }
+
+    /**
+     * 優先使用直接插入的方式寫入 ArticleAi 記錄，若失敗則改用查詢+更新的方式
+     * 以減少事務鎖的爭奪
+     */
+    @Transactional
+    fun saveAiResult(
+        article: Article,
+        json: JsonNode,
+        optimizedResult: AiArticleProcessorService.HtmlOptimizationResult
+    ): ArticleAi {
+        val startTime = System.currentTimeMillis()
+        logger.info("Saving AI result for article ID {}", article.id)
+
+        try {
+            // 直接插入
+            val entity = ArticleAi(article = article).apply {
+                title = json.path("title").asText(null)
+                titleZh = json.path("title_zh").asText(null)
+                optimizedHtml = optimizedResult.optimizedHtml
+                optimizedZhHtml = optimizedResult.optimizedZhHtml
+                summaryEn = json.path("summary_en").asText(null)
+                summaryZh = json.path("summary_zh").asText(null)
+                cleanedText = json.path("cleaned_text").asText(null)
+                cleanedTextZh = json.path("cleaned_text_zh").asText(null)
+                val expNode = json.path("explanation")
+                explanation = if (!expNode.isMissingNode && !expNode.isNull && expNode.isObject) {
+                    expNode.toString()
+                } else {
+                    "{}"
+                }
+            }
+
+            val savedEntity = articleAiRepository.save(entity)
+            logger.info(
+                "Direct save successful for article ID {} in {}ms",
+                article.id,
+                System.currentTimeMillis() - startTime
+            )
+            return savedEntity
+
+        } catch (e: Exception) {
+            logger.warn("Direct save failed, trying update approach for article ID {}: {}", article.id, e.message)
+
+            // 查詢+更新
+            val existing = articleAiRepository.findByArticle_Id(article.id!!).orElse(
+                ArticleAi(article = article)
+            ).apply {
+                title = json.path("title").asText(null)
+                titleZh = json.path("title_zh").asText(null)
+                optimizedHtml = optimizedResult.optimizedHtml
+                optimizedZhHtml = optimizedResult.optimizedZhHtml
+                summaryEn = json.path("summary_en").asText(null)
+                summaryZh = json.path("summary_zh").asText(null)
+                cleanedText = json.path("cleaned_text").asText(null)
+                cleanedTextZh = json.path("cleaned_text_zh").asText(null)
+                val expNode = json.path("explanation")
+                explanation = if (!expNode.isMissingNode && !expNode.isNull && expNode.isObject) {
+                    expNode.toString()
+                } else {
+                    "{}"
+                }
+            }
+
+            val savedEntity = articleAiRepository.save(existing)
+            logger.info(
+                "Fallback save successful for article ID {} in {}ms",
+                article.id,
+                System.currentTimeMillis() - startTime
+            )
+            return savedEntity
+        }
+    }
+
+    // 隨機取得 n 篇 AI 文章
     fun random(count: Int, source: String?, section: String?): Pair<List<ArticleAi>, Int> {
         val page = PageRequest.of(0, 10000)
         val pageData = when {
@@ -114,7 +241,6 @@ class AiArticleService(
      * @param section 區塊名稱過濾（可選，例如 news、world、technology）
      * @return Triple of (已處理的 AI 文章清單, 符合條件的可用文章總數, 本次新處理的文章數)
      */
-    @Transactional
     fun randomWithProcessing(count: Int, source: String?, section: String?): Triple<List<ArticleAi>, Int, Int> {
         val page = PageRequest.of(0, 10000)
         val allArticles = when {
@@ -143,23 +269,22 @@ class AiArticleService(
         val result = mutableListOf<ArticleAi>()
         var processedCount = 0
 
+        logger.info(
+            "Starting random processing of {} articles (source={}, section={})",
+            selectedArticles.size, source ?: "any", section ?: "any"
+        )
+
         for (article in selectedArticles) {
             try {
-                val existing =
-                    articleAiRepository.findByArticle_Id(requireNotNull(article.id) { "Article must have an ID" })
-                if (existing.isPresent) {
-                    result.add(existing.get())
-                } else {
-                    logger.info("Processing article ${article.id} with AI: ${article.title}")
-                    val aiArticle = getOrProcess(requireNotNull(article.id) { "Article must have an ID" })
-                    result.add(aiArticle)
-                    processedCount++
-                }
+                val aiArticle = getOrProcessThreadSafe(requireNotNull(article.id) { "Article must have an ID" })
+                result.add(aiArticle)
+                processedCount++
             } catch (e: Exception) {
                 logger.error("Failed to process article ${article.id}: ${e.message}", e)
             }
         }
 
+        logger.info("Completed random processing: processed {}/{} articles", processedCount, selectedArticles.size)
         return Triple(result, allArticles.size, processedCount)
     }
 
@@ -214,7 +339,7 @@ class AiArticleService(
         return toDto(aiArticle.article, aiArticle)
     }
 
-    private fun toDto(article: com.linli.news.domain.Article, aiArticle: ArticleAi): AiArticleDetail {
+    private fun toDto(article: Article, aiArticle: ArticleAi): AiArticleDetail {
         val articleId = requireNotNull(article.id) { "Article must have an ID" }
         val explanationJson = aiArticle.explanation
         val explanation = try {
