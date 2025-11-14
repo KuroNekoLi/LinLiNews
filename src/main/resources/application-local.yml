@@ -1,0 +1,15 @@
+# Local development configuration
+
+# 本地数据库存储路径
+spring:
+  datasource:
+    url: jdbc:sqlite:./linli_news.db?foreign_keys=on&busy_timeout=10000
+
+# 禁用调度器以节省资源
+scheduler:
+  enabled: false
+
+# 本地环境中的其他配置
+logging:
+  level:
+    com.linli.news: DEBUG

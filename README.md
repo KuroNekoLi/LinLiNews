@@ -14,7 +14,7 @@ Swagger API 文件。
 - [Docker 容器配置](#docker-容器配置說明)
 - [Zeabur 部署](#zeabur-部署與-cicd)
 - [環境變數](#環境變數本機與雲端通用)
-- [常見問題](#常見問題排查)
+- [常見問題排查](#常見問題排查)
 - [測試](#測試)
 - [資源控制快速參考](#資源控制快速參考指南)
 
@@ -45,12 +45,33 @@ docker-compose ps
 ./gradlew bootRun
 ```
 
-**3) 開啟 API 文件（Swagger UI）**
+**3) 如果希望在本地開發時禁用定時任務（scheduler）**
+
+可以使用本地配置文件啟動應用程序：
+
+```bash
+# 使用本地配置啟動，將禁用定時任務
+./gradlew bootRun --args="--spring.profiles.active=local"
+```
+
+或者設置環境變數：
+
+```bash
+# 在 Linux/macOS
+export SPRING_PROFILES_ACTIVE=local
+./gradlew bootRun
+
+# 在 Windows PowerShell
+$env:SPRING_PROFILES_ACTIVE="local"
+.\gradlew.bat bootRun
+```
+
+**4) 開啟 API 文件（Swagger UI）**
 
 - Swagger UI: http://localhost:8080/swagger-ui/index.html
 - OpenAPI JSON: http://localhost:8080/v3/api-docs
 
-**4) 試試看 API**
+**5) 試試看 API**
 
 ```bash
 # 取得分頁文章
@@ -436,6 +457,11 @@ curl -s "https://<你的子網域>/api/articles?page=0&size=5" | jq .
    # 停用後可不部署 Full-Text RSS 服務
    ```
 
+3. **Scheduler 控制**
+   ```bash
+   SCHEDULER_ENABLED=false  # 停用 Spring Scheduler，節省 CPU
+   ```
+
 #### 📊 三種部署模式
 
 | 模式          | 定時任務 | Full-Text RSS | CPU | 記憶體    | 適用場景    |
@@ -454,6 +480,32 @@ curl -s "https://<你的子網域>/api/articles?page=0&size=5" | jq .
 
 ## 環境變數（本機與雲端通用）
 
+### 多環境配置
+
+系統使用多份環境配置（application.yml）以適應不同平台：
+
+- `application.yml`：預設配置
+- `application-local.yml`：本機開發環境（路徑：`./linli_news.db`，關閉定時任務）
+- `application-prod.yml`：Zeabur 生產環境（路徑：`/data/linli_news.db`）
+- `application-tunnel.yml`：電腦通道環境
+- `application-test.yml`：單元測試環境
+
+如何指定使用的環境檔案：
+
+```bash
+# 使用本地環境配置啟動
+./gradlew bootRun --args="--spring.profiles.active=local"
+
+# 或設定環境變數
+# Linux/macOS
+export SPRING_PROFILES_ACTIVE=local
+./gradlew bootRun
+
+# Windows PowerShell
+$env:SPRING_PROFILES_ACTIVE="local"
+.\gradlew.bat bootRun
+```
+
 ### 必填／常用
 
 ```bash
@@ -461,6 +513,9 @@ curl -s "https://<你的子網域>/api/articles?page=0&size=5" | jq .
 SPRING_DATASOURCE_URL=jdbc:mysql://<MYSQL_HOST>:<MYSQL_PORT>/linli_news?...
 SPRING_DATASOURCE_USERNAME=<MYSQL_USER>
 SPRING_DATASOURCE_PASSWORD=<MYSQL_PASSWORD>
+
+# 注意：Zeabur 上建議使用 SPRING_PROFILES_ACTIVE=prod
+# 會自動使用 /data/linli_news.db 作為數據庫路徑
 
 # Full-Text RSS 服務位址
 FULLTEXTRSS_BASE_URL=http://localhost:8085  # 本機
@@ -491,6 +546,9 @@ JOBRUNR_SCHEDULER_ENABLED=true
 JOBRUNR_BACKGROUND_ENABLED=true
 JOBRUNR_DASHBOARD_ENABLED=false  # 雲端建議關閉
 JOBRUNR_DASHBOARD_PORT=8001
+
+# Scheduler 控制
+SCHEDULER_ENABLED=true  # 啟用 Spring Scheduler
 
 # Swagger 自訂伺服器 URL（選填，通常不需要設定）
 # 注意：springdoc-openapi 會自動從 HTTP 請求偵測伺服器 URL

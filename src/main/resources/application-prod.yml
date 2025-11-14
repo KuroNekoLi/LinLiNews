@@ -1,0 +1,12 @@
+# 生产环境特定配置
+
+server:
+  forward-headers-strategy: framework
+
+# Zeabur 数据库存储路径
+spring:
+  datasource:
+    url: jdbc:sqlite:/data/linli_news.db?foreign_keys=on&busy_timeout=10000
+
+# 生产环境中的其他配置
+# 可以根据需要在这里添加更多的配置

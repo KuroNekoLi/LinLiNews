@@ -18,6 +18,9 @@
 這些是應用程式運行的最低要求：
 
 ```bash
+# 使用 Zeabur 的 SQLite 數據庫（預設）
+SPRING_PROFILES_ACTIVE=prod
+
 # 資料庫連線（由 Zeabur MySQL Add-on 自動提供）
 SPRING_DATASOURCE_URL=jdbc:mysql://<MYSQL_HOST>:<PORT>/linli_news?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=UTC&createDatabaseIfNotExist=true
 SPRING_DATASOURCE_USERNAME=<MYSQL_USER>
@@ -26,6 +29,8 @@ SPRING_DATASOURCE_PASSWORD=<MYSQL_PASSWORD>
 # OpenAI API（AI 功能必要）
 OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>
 ```
+
+> **注意**：如使用 SQLite 數據庫，在 Zeabur 平台上會使用 `/data/linli_news.db` 數據庫文件。Zeabur 容器有 `/data` 目錄作為持久儲存。
 
 ---
 

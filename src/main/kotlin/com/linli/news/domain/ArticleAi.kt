@@ -18,6 +18,7 @@ import java.time.OffsetDateTime
  * @property summaryEn AI 產生的英文摘要
  * @property summaryZh AI 產生的中文摘要
  * @property explanation 教學解說（JSON 格式，包含單字、文法、句型等）
+ * @property wordCount 文章字數
  * @property id AI 文章唯一識別碼
  * @property createdAt 建立時間
  * @property updatedAt 更新時間
@@ -68,7 +69,11 @@ class ArticleAi(
 
     /** 教學解說（JSON 格式，包含單字、文法、句型、片語、閱讀測驗等） */
     @Column(name = "explanation", columnDefinition = "JSON")
-    var explanation: String? = null
+    var explanation: String? = null,
+
+    /** 文章字數 */
+    @Column(name = "word_count")
+    var wordCount: Int = 0
 ) {
     /** AI 文章唯一識別碼（自動遞增） */
     @Id

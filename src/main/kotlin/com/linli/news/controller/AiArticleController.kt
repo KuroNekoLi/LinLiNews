@@ -1,21 +1,20 @@
 package com.linli.news.controller
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.linli.news.domain.ArticleAi
-import com.linli.news.service.AiArticleService
 import com.linli.news.model.AiArticleDetail
 import com.linli.news.model.Explanation
+import com.linli.news.service.AiArticleService
+import io.swagger.v3.oas.annotations.Hidden
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
+import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Profile
 import org.springframework.data.domain.Page
-import org.springframework.data.domain.PageRequest
-import org.springframework.web.bind.annotation.*
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.springframework.http.ResponseEntity
-import io.swagger.v3.oas.annotations.Hidden
-import org.slf4j.LoggerFactory
+import org.springframework.web.bind.annotation.*
 
 /**
  * AI 文章控制器
@@ -130,6 +129,43 @@ class AiArticleController(
     ): Map<String, Any> {
         val limited = kotlin.math.min(count, 20)
         val (aiList, total, processedCount) = aiArticleService.randomWithProcessing(limited, source, section)
+        val items = aiList.map { toDto(it) }
+        return mapOf(
+            "message" to "success",
+            "requestedCount" to limited,
+            "actualCount" to items.count(),
+            "totalAvailable" to total,
+            "processedCount" to processedCount,
+            "filters" to mapOf("source" to source, "section" to section),
+            "articles" to items
+        )
+    }
+
+    /**
+     * 隨機取得 n 篇文章並自動進行 AI 處理與重寫
+     *
+     * 若文章尚未經 AI 處理，會自動進行處理並儲存
+     *
+     * @param count 文章數量（最多 20）
+     * @param source 來源過濾，例如 BBC、CNN
+     * @param section 區塊過濾，例如 news、world、technology
+     * @return 隨機 AI 文章清單與統計資訊
+     */
+    @GetMapping("/random-with-rewrite-processing")
+    @Operation(
+        summary = "隨機取得 n 篇文章並自動進行 AI 處理與重寫",
+        description = "從資料庫隨機抽取文章，若尚未經 AI 處理則自動處理並儲存。可選擇以來源/區塊過濾。"
+    )
+    fun randomWithRewriteProcessing(
+        @Parameter(description = "文章數量（最多 20）")
+        @RequestParam(name = "count", defaultValue = "5") count: Int,
+        @Parameter(description = "來源過濾，例如 BBC、CNN")
+        @RequestParam(name = "source", required = false) source: String?,
+        @Parameter(description = "區塊過濾，例如 news、world、technology")
+        @RequestParam(name = "section", required = false) section: String?
+    ): Map<String, Any> {
+        val limited = kotlin.math.min(count, 20)
+        val (aiList, total, processedCount) = aiArticleService.randomWithRewriteAndProcessing(limited, source, section)
         val items = aiList.map { toDto(it) }
         return mapOf(
             "message" to "success",

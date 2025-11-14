@@ -1,7 +1,6 @@
 package com.linli.news.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.node.ObjectNode
 import com.linli.news.domain.Article
 import com.linli.news.domain.ArticleAi
 import com.linli.news.domain.ArticleSource
@@ -10,9 +9,7 @@ import com.linli.news.repository.ArticleRepository
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.springframework.data.domain.PageImpl
@@ -92,7 +89,7 @@ class AiArticleServiceTest {
         val page = PageImpl(listOf(aiArticle))
         every { articleAiRepository.findByArticle_Source_Name("BBC", any()) } returns page
 
-        val (result, total) = service.random(count = 10, source = "BBC", section = null)
+        val (result, _) = service.random(count = 10, source = "BBC", section = null)
 
         assertTrue(result.isNotEmpty())
         verify { articleAiRepository.findByArticle_Source_Name("BBC", any()) }
@@ -134,7 +131,7 @@ class AiArticleServiceTest {
             )
         } returns page
 
-        val (result, total) = service.random(count = 10, source = "BBC", section = "world")
+        val (result, _) = service.random(count = 10, source = "BBC", section = "world")
 
         assertTrue(result.isNotEmpty())
         verify { articleAiRepository.findByArticle_Source_NameAndArticle_Source_Section("BBC", "world", any()) }
@@ -220,13 +217,13 @@ class AiArticleServiceTest {
                 "Test Title",
                 any()
             )
-        } returns AiArticleProcessorService.HtmlOptimizationResult(
+        } returns HtmlOptimizationResult(
             optimizedHtml = "<article><p>Optimized</p></article>",
             optimizedZhHtml = "<article><p>優化內容</p></article>"
         )
         every { articleAiRepository.save(any<ArticleAi>()) } answers { firstArg() }
 
-        val (result, total, processedCount) = service.randomWithProcessing(1, null, null)
+        val (result, _, processedCount) = service.randomWithProcessing(1, null, null)
 
         assertEquals(1, processedCount)
         assertTrue(result.isNotEmpty())
@@ -263,7 +260,7 @@ class AiArticleServiceTest {
         every { aiProcessor.process("Title 2", any<String>()) } returns aiResponse
         every {
             aiProcessor.optimizeHtml("Title 2", any())
-        } returns AiArticleProcessorService.HtmlOptimizationResult(
+        } returns HtmlOptimizationResult(
             optimizedHtml = "<article><p>Optimized 2</p></article>",
             optimizedZhHtml = "<article><p>優化內容2</p></article>"
         )
@@ -271,7 +268,7 @@ class AiArticleServiceTest {
             firstArg<ArticleAi>().apply { id = 100 }
         }
 
-        val (result, total, processedCount) = service.randomWithProcessing(2, null, null)
+        val (_, total, processedCount) = service.randomWithProcessing(2, null, null)
 
         assertEquals(1, processedCount) // 只有一篇成功處理
         assertEquals(2, total) // 總共有2篇文章可選
@@ -352,7 +349,7 @@ class AiArticleServiceTest {
                 "Test Title",
                 any()
             )
-        } returns AiArticleProcessorService.HtmlOptimizationResult(
+        } returns HtmlOptimizationResult(
             optimizedHtml = "<article><p>Optimized</p></article>",
             optimizedZhHtml = "<article><p>優化內容</p></article>"
         )
