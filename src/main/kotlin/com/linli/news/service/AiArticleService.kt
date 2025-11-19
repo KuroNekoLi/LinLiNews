@@ -503,10 +503,9 @@ class AiArticleService(
 
                             // 3. AI 處理（不在 DB 交易內，可並行）
                             // Two-stage AI processing: rewrite and explain
+                            val difficultyLevel = difficulty ?: DifficultyLevel.NORMAL
                             val combinedResult: JsonNode = try {
                                 val aiStart = System.currentTimeMillis()
-
-                                val difficultyLevel = difficulty ?: DifficultyLevel.NORMAL
                                 val stage1Result =
                                     aiProcessor.rewriteStage1(difficultyLevel, fullArticle.title, fullArticle.contentHtml!!)
                                 logger.info(
@@ -724,7 +723,11 @@ class AiArticleService(
         val entity = articleAiRepository.findByArticle_Id(articleId).orElse(null)
             ?: ArticleAi(article = article)
 
-        entity.applyFrom(json, HtmlOptimizationResult(optimizedResult.optimizedHtml, optimizedResult.optimizedZhHtml))
+        entity.applyFrom(
+            json,
+            HtmlOptimizationResult(optimizedResult.optimizedHtml, optimizedResult.optimizedZhHtml),
+            DifficultyLevel.NORMAL
+        )
 
         return articleAiRepository.save(entity)
     }
