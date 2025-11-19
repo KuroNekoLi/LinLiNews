@@ -14,6 +14,8 @@ java.toolchain {
 
 repositories {
     mavenCentral()
+    // 追加官方鏡像以降低 Maven Central 偶發 403 風險
+    maven(url = "https://repo1.maven.org/maven2/")
 }
 
 dependencies {

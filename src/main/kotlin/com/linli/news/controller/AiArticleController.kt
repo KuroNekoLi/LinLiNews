@@ -14,7 +14,10 @@ import com.linli.news.service.AiArticleService
 import io.swagger.v3.oas.annotations.Hidden
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Profile
@@ -89,6 +92,15 @@ class AiArticleController(
         summary = "隨機取得 n 篇 AI 文章",
         description = "可選擇以來源/區塊過濾。若庫內沒有資料則回傳空陣列，不會即時解析。"
     )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "成功隨機取得已處理文章",
+                content = [Content(mediaType = "application/json", schema = Schema(implementation = RandomArticlesResponse::class))]
+            )
+        ]
+    )
     fun random(
         @Parameter(description = "文章數量（最多 20）")
         @RequestParam(name = "count", defaultValue = "5") count: Int,
@@ -123,6 +135,22 @@ class AiArticleController(
     @Operation(
         summary = "隨機取得 n 篇文章並自動進行 AI 處理",
         description = "從資料庫隨機抽取文章，若尚未經 AI 處理則自動處理並儲存。可選擇以來源/區塊過濾，並可指定 AI 輸出的難度等級。"
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "成功取得或處理隨機文章",
+                content = [
+                    Content(
+                        mediaType = "application/json",
+                        schema = Schema(implementation = RandomWithProcessingResponse::class)
+                    )
+                ]
+            ),
+            ApiResponse(responseCode = "429", description = "AI 配額或速率限制"),
+            ApiResponse(responseCode = "500", description = "伺服器處理錯誤")
+        ]
     )
     fun randomWithProcessing(
         @Parameter(description = "文章數量（最多 20）")
