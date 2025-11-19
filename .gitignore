@@ -17,6 +17,7 @@ logs/
 *.log
 tmp/
 *.tmp
+.kotlin/
 
 # Spring Boot
 *.pid

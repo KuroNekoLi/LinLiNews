@@ -206,7 +206,7 @@ class AiArticleController(
         summary = "[測試] 查看 AI 原始 JSON",
         description = "調試用端點，檢視 AI 產生的原始 JSON 資料（僅限非生產環境）"
     )
-    fun debugRawJson(@PathVariable id: Long): ResponseEntity<Map<String, Any>> {
+    fun debugRawJson(@PathVariable id: Long): ResponseEntity<Map<String, Any?>> {
         return try {
             val aiArticle = aiArticleService.listProcessed(0, 1000).content
                 .find { it.article.id == id }
@@ -221,21 +221,20 @@ class AiArticleController(
                 )
             }
 
-            ResponseEntity.ok(
-                mapOf(
-                    "articleId" to id,
-                    "titleZh" to aiArticle.titleZh,
-                    "availableDifficulties" to contentSummary.keys,
-                    "contentSummary" to contentSummary
-                ) as Map<String, Any>
+            val responseBody: Map<String, Any?> = mapOf(
+                "articleId" to id,
+                "titleZh" to aiArticle.titleZh,
+                "availableDifficulties" to contentSummary.keys,
+                "contentSummary" to contentSummary
             )
+
+            ResponseEntity.ok(responseBody)
         } catch (e: Exception) {
-            ResponseEntity.status(500).body(
-                mapOf(
-                    "error" to e.message,
-                    "errorType" to e.javaClass.simpleName
-                ) as Map<String, Any>
+            val errorBody: Map<String, Any?> = mapOf(
+                "error" to (e.message ?: "Unknown error"),
+                "errorType" to e.javaClass.simpleName
             )
+            ResponseEntity.status(500).body(errorBody)
         }
     }
 
@@ -252,18 +251,18 @@ class AiArticleController(
         summary = "[測試] 重新處理並診斷",
         description = "測試用端點，重新處理文章並回傳詳細診斷信息（僅限非生產環境）"
     )
-    fun reprocessArticleWithDebug(@PathVariable id: Long): ResponseEntity<Map<String, Any>> {
+    fun reprocessArticleWithDebug(@PathVariable id: Long): ResponseEntity<Map<String, Any?>> {
         return try {
             val result = aiArticleService.processAndOverwriteDto(id, null)
             val content = result.content
             val explanation = content?.explanation
-            ResponseEntity.ok(
-                mapOf(
-                    "success" to true,
-                    "articleId" to id,
-                    "hasExplanation" to (explanation != null),
-                    "explanationFields" to if (explanation != null) {
-                        val exp = explanation
+            val responseBody = buildMap<String, Any?> {
+                put("success", true)
+                put("articleId", id)
+                put("hasExplanation", explanation != null)
+                explanation?.let { exp ->
+                    put(
+                        "explanationFields",
                         mapOf(
                             "hasVocabulary" to (exp.vocabulary?.isNotEmpty() == true),
                             "hasGrammar" to (exp.grammar?.isNotEmpty() == true),
@@ -274,22 +273,23 @@ class AiArticleController(
                             "grammarCount" to (exp.grammar?.size ?: 0),
                             "mcqCount" to (exp.comprehensionMcq?.size ?: 0)
                         )
-                    } else null,
-                    "message" to "文章已重新處理",
-                    "titleZh" to result.titleZh,
-                    "cleanedTextLength" to (content?.cleanedText?.length ?: 0),
-                    "cleanedTextZhLength" to (content?.cleanedTextZh?.length ?: 0)
-                ) as Map<String, Any>
-            )
+                    )
+                }
+                put("message", "文章已重新處理")
+                put("titleZh", result.titleZh)
+                put("cleanedTextLength", content?.cleanedText?.length ?: 0)
+                put("cleanedTextZhLength", content?.cleanedTextZh?.length ?: 0)
+            }
+
+            ResponseEntity.ok(responseBody)
         } catch (e: Exception) {
-            ResponseEntity.status(500).body(
-                mapOf(
-                    "success" to false,
-                    "articleId" to id,
-                    "error" to e.message,
-                    "errorType" to e.javaClass.simpleName
-                ) as Map<String, Any>
+            val errorBody: Map<String, Any?> = mapOf(
+                "success" to false,
+                "articleId" to id,
+                "error" to (e.message ?: "Unknown error"),
+                "errorType" to e.javaClass.simpleName
             )
+            ResponseEntity.status(500).body(errorBody)
         }
     }
 
@@ -306,36 +306,35 @@ class AiArticleController(
         summary = "[測試] 測試 JSON 解析",
         description = "測試用端點，驗證 Explanation JSON 的解析功能（僅限非生產環境）"
     )
-    fun testJsonParsing(@RequestBody jsonString: String): ResponseEntity<Map<String, Any>> {
+    fun testJsonParsing(@RequestBody jsonString: String): ResponseEntity<Map<String, Any?>> {
         return try {
             val explanation = objectMapper.readValue(jsonString, Explanation::class.java)
-            ResponseEntity.ok(
-                mapOf(
-                    "success" to true,
-                    "vocabularyCount" to (explanation.vocabulary?.size ?: 0),
-                    "grammarCount" to (explanation.grammar?.size ?: 0),
-                    "sentencePatternsCount" to (explanation.sentencePatterns?.size ?: 0),
-                    "phrasesIdiomsCount" to (explanation.phrasesIdioms?.size ?: 0),
-                    "comprehensionMcqCount" to (explanation.comprehensionMcq?.size ?: 0),
-                    "hasCompleteStructure" to (
-                            explanation.vocabulary != null &&
-                                    explanation.grammar != null &&
-                                    explanation.sentencePatterns != null &&
-                                    explanation.phrasesIdioms != null &&
-                                    explanation.comprehensionMcq != null
-                            ),
-                    "parsedExplanation" to explanation
-                ) as Map<String, Any>
+            val responseBody: Map<String, Any?> = mapOf(
+                "success" to true,
+                "vocabularyCount" to (explanation.vocabulary?.size ?: 0),
+                "grammarCount" to (explanation.grammar?.size ?: 0),
+                "sentencePatternsCount" to (explanation.sentencePatterns?.size ?: 0),
+                "phrasesIdiomsCount" to (explanation.phrasesIdioms?.size ?: 0),
+                "comprehensionMcqCount" to (explanation.comprehensionMcq?.size ?: 0),
+                "hasCompleteStructure" to (
+                    explanation.vocabulary != null &&
+                        explanation.grammar != null &&
+                        explanation.sentencePatterns != null &&
+                        explanation.phrasesIdioms != null &&
+                        explanation.comprehensionMcq != null
+                    ),
+                "parsedExplanation" to explanation
             )
+
+            ResponseEntity.ok(responseBody)
         } catch (e: Exception) {
-            ResponseEntity.status(400).body(
-                mapOf(
-                    "success" to false,
-                    "error" to e.message,
-                    "errorType" to e.javaClass.simpleName,
-                    "detailedMessage" to e.toString()
-                ) as Map<String, Any>
+            val errorBody: Map<String, Any?> = mapOf(
+                "success" to false,
+                "error" to (e.message ?: "Unknown error"),
+                "errorType" to e.javaClass.simpleName,
+                "detailedMessage" to e.toString()
             )
+            ResponseEntity.status(400).body(errorBody)
         }
     }
 
