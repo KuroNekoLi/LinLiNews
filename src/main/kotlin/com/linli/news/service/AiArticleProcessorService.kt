@@ -133,14 +133,14 @@ class AiArticleProcessorService(
         return root to content
     }
 
-    fun process(title: String?, textContent: String?): JsonNode {
+    fun process(title: String?, textContent: String?, fromLanguage: String, toLanguage: String): JsonNode {
         require(apiKey.isNotBlank()) { "OPENAI_API_KEY / openai.api-key is required" }
         if (textContent.isNullOrBlank()) {
             throw IllegalArgumentException("Article text content is empty; cannot process with AI")
         }
 
-        val systemPrompt = AiArticlePrompts.processSystemPrompt()
-        val userPrompt = AiArticlePrompts.processUserPrompt(title, textContent)
+        val systemPrompt = AiArticlePrompts.processSystemPrompt(fromLanguage, toLanguage)
+        val userPrompt = AiArticlePrompts.processUserPrompt(title, textContent, fromLanguage, toLanguage)
 
         val body = buildJsonModeBody(
             systemPrompt = systemPrompt,
@@ -189,15 +189,16 @@ class AiArticleProcessorService(
     fun optimizeHtml(
         title: String?,
         originalHtml: String,
-        targetLanguage: HtmlOptimizationLanguage = HtmlOptimizationLanguage.ENGLISH
+        fromLanguage: String,
+        toLanguage: String
     ): HtmlOptimizationResult {
         require(apiKey.isNotBlank()) { "OPENAI_API_KEY / openai.api-key is required" }
         if (originalHtml.isBlank()) {
             throw IllegalArgumentException("Article HTML content is empty; cannot optimize with AI")
         }
 
-        val systemPrompt = AiArticlePrompts.optimizeHtmlSystemPrompt()
-        val userPrompt = AiArticlePrompts.optimizeHtmlUserPrompt(title, originalHtml)
+        val systemPrompt = AiArticlePrompts.optimizeHtmlSystemPrompt(fromLanguage, toLanguage)
+        val userPrompt = AiArticlePrompts.optimizeHtmlUserPrompt(title, originalHtml, fromLanguage, toLanguage)
 
         val body = buildJsonModeBody(
             systemPrompt = systemPrompt,
@@ -213,16 +214,20 @@ class AiArticleProcessorService(
         logger.debug("[AI] optimizeHtml parsed JSON (first 400 chars): ${content.take(400)}")
 
         val optimizedNode = objectMapper.readTree(content)
-        val optimizedHtml = optimizedNode.path("optimized_html").asText(null)
+        val optimizedHtml = optimizedNode.path("optimized_html_from").asText(
+            optimizedNode.path("optimized_html").asText(null)
+        )
         if (optimizedHtml.isNullOrBlank()) {
-            logger.error("[AI] optimizeHtml JSON 缺少 optimized_html 欄位或為空，target=${targetLanguage}")
+            logger.error("[AI] optimizeHtml JSON 缺少 optimized_html_from 欄位或為空，lang=$fromLanguage")
             throw IllegalStateException("AI 回應缺少 optimized_html 欄位")
         }
 
-        val optimizedZhHtml = optimizedNode.path("optimized_zh_html").asText(null)
+        val optimizedZhHtml = optimizedNode.path("optimized_html_to").asText(
+            optimizedNode.path("optimized_zh_html").asText(null)
+        )
         return HtmlOptimizationResult(
-            optimizedHtml = optimizedHtml,
-            optimizedZhHtml = optimizedZhHtml
+            optimizedHtmlFrom = optimizedHtml,
+            optimizedHtmlTo = optimizedZhHtml
         )
     }
 
@@ -233,7 +238,13 @@ class AiArticleProcessorService(
      * @param originalHtml 原始HTML內容
      * @return 重寫後的結果，包含優化後的HTML、清理後的文本等
      */
-    fun rewriteStage1(difficulty: DifficultyLevel, title: String?, originalHtml: String): JsonNode {
+    fun rewriteStage1(
+        difficulty: DifficultyLevel,
+        title: String?,
+        originalHtml: String,
+        fromLanguage: String,
+        toLanguage: String
+    ): JsonNode {
         require(apiKey.isNotBlank()) { "OPENAI_API_KEY / openai.api-key is required" }
         if (originalHtml.isBlank()) {
             throw IllegalArgumentException("Article HTML content is empty; cannot process with AI")
@@ -253,8 +264,9 @@ class AiArticleProcessorService(
                     |
                 """.trimMargin()
 
-                val systemPrompt = AiArticlePrompts.rewriteStage1SystemPrompt(difficulty)
-                val userPrompt = AiArticlePrompts.rewriteStage1UserPrompt(difficulty, title, originalHtml) + additionalInstructions
+                val systemPrompt = AiArticlePrompts.rewriteStage1SystemPrompt(difficulty, fromLanguage, toLanguage)
+                val userPrompt = AiArticlePrompts
+                    .rewriteStage1UserPrompt(difficulty, title, originalHtml, fromLanguage, toLanguage) + additionalInstructions
 
                 val body = buildJsonModeBody(
                     systemPrompt = systemPrompt,
@@ -285,7 +297,9 @@ class AiArticleProcessorService(
 
                 // 保存當前結果和字數
                 lastResult = result
-                val cleanedText = result.path("cleaned_text").asText("")
+                val cleanedText = result.path("cleaned_text_from").asText(
+                    result.path("cleaned_text").asText("")
+                )
                 lastWordCount = countEnglishWords(cleanedText)
                 // 驗證字數和段落
                 logger.info("[AI] Validating rewriteStage1 result: wordCount=$lastWordCount, difficulty=${difficulty.label}")
@@ -330,14 +344,21 @@ class AiArticleProcessorService(
      * @param rewrittenText 重寫後的文本
      * @return 教學解析結果，包含字彙、文法、題目等
      */
-    fun teachingStage2(difficulty: DifficultyLevel, title: String?, rewrittenText: String): JsonNode {
+    fun teachingStage2(
+        difficulty: DifficultyLevel,
+        title: String?,
+        rewrittenText: String,
+        fromLanguage: String,
+        toLanguage: String
+    ): JsonNode {
         require(apiKey.isNotBlank()) { "OPENAI_API_KEY / openai.api-key is required" }
         if (rewrittenText.isBlank()) {
             throw IllegalArgumentException("Rewritten text is empty; cannot generate teaching materials")
         }
 
-        val systemPrompt = AiArticlePrompts.teachingStage2SystemPrompt(difficulty)
-        val userPrompt = AiArticlePrompts.teachingStage2UserPrompt(difficulty, title ?: "(no title)", rewrittenText)
+        val systemPrompt = AiArticlePrompts.teachingStage2SystemPrompt(difficulty, fromLanguage, toLanguage)
+        val userPrompt = AiArticlePrompts
+            .teachingStage2UserPrompt(difficulty, title ?: "(no title)", rewrittenText, fromLanguage, toLanguage)
 
         val body = buildJsonModeBody(
             systemPrompt = systemPrompt,

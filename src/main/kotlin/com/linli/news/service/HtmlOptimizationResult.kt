@@ -1,6 +1,6 @@
 package com.linli.news.service
 
 data class HtmlOptimizationResult(
-    val optimizedHtml: String,
-    val optimizedZhHtml: String?
+    val optimizedHtmlFrom: String,
+    val optimizedHtmlTo: String?
 )

@@ -27,48 +27,57 @@ object AiArticlePrompts {
             "vocabulary": [
               {
                 "pos": string,
-                "word_en": string,
-                "word_zh": string,
-                "definition_en": string,
-                "definition_zh": string,
-                "example_en": string,
-                "example_zh": string
+                "word_from": string,
+                "word_to": string,
+                "definition_from": string,
+                "definition_to": string,
+                "example_from": string,
+                "example_to": string
               }
             ],
             "grammar": [
               {
-                "rule_en": string,
-                "explanation_en": string,
-                "explanation_zh": string,
-                "example_en": string,
-                "example_zh": string
+                "rule_from": string,
+                "rule_to": string,
+                "explanation_from": string,
+                "explanation_to": string,
+                "example_from": string,
+                "example_to": string
               }
             ],
             "sentence_patterns": [
               {
-                "pattern_en": string,
-                "explanation_en": string,
-                "explanation_zh": string,
-                "example_en": string,
-                "example_zh": string
+                "pattern_from": string,
+                "pattern_to": string,
+                "explanation_from": string,
+                "explanation_to": string,
+                "example_from": string,
+                "example_to": string
               }
             ],
             "phrases_idioms": [
               {
-                "phrase_en": string,
-                "explanation_en": string,
-                "explanation_zh": string,
-                "example_en": string,
-                "example_zh": string
+                "phrase_from": string,
+                "phrase_to": string,
+                "explanation_from": string,
+                "explanation_to": string,
+                "example_from": string,
+                "example_to": string
               }
             ],
             "comprehension_mcq": [
               {
-                "question_en": string,
-                "question_zh": string,
-                "options": {"A": string, "B": string, "C": string, "D": string},
+                "question_from": string,
+                "question_to": string,
+                "options": [
+                    {"label": "A", "text_from": string, "text_to": string},
+                    {"label": "B", "text_from": string, "text_to": string},
+                    {"label": "C", "text_from": string, "text_to": string},
+                    {"label": "D", "text_from": string, "text_to": string}
+                ],
                 "answer": string,              // 僅能是 "A"|"B"|"C"|"D"
-                "explanation_zh": string       // 詳細中文解析（不要太簡單）
+                "explanation_from": string,
+                "explanation_to": string
               }
             ]
         }
@@ -91,40 +100,43 @@ object AiArticlePrompts {
     /**
      * 處理純文字內容時使用的 system prompt。
      */
-    fun processSystemPrompt(): String = """
-        你是專業的英文新聞教學助手。
+    fun processSystemPrompt(fromLanguage: String, toLanguage: String): String = """
+        你是專業的雙語新聞教學助手。
+        - 原文語言：$fromLanguage
+        - 目標語言：$toLanguage
         任務：
-        1) 處理提供的英文純文字內容。
-        2) 將英文內容翻譯為繁體中文（保留專有名詞，時間地點數字精確），並且「良好分段」。
-        3) 以「英文教學者」身份，撰寫詳盡講解：
+        1) 清理並重新分段原文，輸出 `cleaned_text_from`（使用 $fromLanguage）。
+        2) 忠實翻譯全文，輸出 `cleaned_text_to`（使用 $toLanguage，保留專有名詞、數字、時間）。
+        3) 以「英文教學者」身份撰寫解析：
 ${EXPLANATION_TASK_DESCRIPTION.prependIndent("           ")}
         4) 產生雙語摘要：
-           - 英文摘要：使用條列式（至少 3 點）
-           - 中文摘要：使用條列式（至少 3 點）
+           - `summary_from`：以 Markdown 條列呈現的 $fromLanguage 摘要（至少 3 點）。
+           - `summary_to`：對應的 $toLanguage 翻譯（至少 3 點）。
+        所有 *_from 欄位必須使用 $fromLanguage，*_to 欄位必須使用 $toLanguage。
         僅輸出 JSON 物件，不要多餘文字。
     """.trimIndent()
 
     /**
      * 處理純文字內容時使用的 user prompt。
      */
-    fun processUserPrompt(title: String?, textContent: String): String = """
+    fun processUserPrompt(title: String?, textContent: String, fromLanguage: String, toLanguage: String): String = """
         請處理下列文章：
         標題：${title ?: "(no title)"}
         內文：```text
         $textContent
         ```
-        
+
         請以 JSON 物件回覆，鍵名固定如下（使用英文 key，所有中文請一律使用「繁體中文」）：
         {
-          "title": string,
-          "title_zh": string,
-          "cleaned_text": string,
-          "cleaned_text_zh": string,
-          "summary_en": string,
-          "summary_zh": string,
+          "title_from": string,      // 使用 $fromLanguage
+          "title_to": string,        // 翻譯成 $toLanguage
+          "cleaned_text_from": string,
+          "cleaned_text_to": string,
+          "summary_from": string,    // Markdown 條列，至少 3 點
+          "summary_to": string,      // 對應翻譯
 ${EXPLANATION_JSON_SCHEMA.prependIndent("          ")}
         }
-        
+
         題目難度請「避免過於簡單」：
         - 不要出是非題；
         - 選項需具迷惑性，不可直接複製原句；
@@ -137,22 +149,24 @@ ${EXPLANATION_JSON_SCHEMA.prependIndent("          ")}
     /**
      * 進行 HTML 優化與清理時使用的 system prompt。
      */
-    fun optimizeHtmlSystemPrompt(): String = """
-        你是專業的英文新聞 HTML 清理助手。
+    fun optimizeHtmlSystemPrompt(fromLanguage: String, toLanguage: String): String = """
+        你是專業的雙語新聞 HTML 清理助手。
+        - 原文語言：$fromLanguage
+        - 目標語言：$toLanguage
         任務：
         1) 解析提供的全文 HTML，萃取並保留與標題、段落內容高度相關的正文。
         2) 依照以下 HTML 結構與清理規則處理內容：
 ${HTML_STRUCTURE_RULES.prependIndent("       ")}
         3) 產生兩份輸出：
-           - `optimized_html`：保留英文原文的最佳化 HTML
-           - `optimized_zh_html`：在結構不變的情況下翻譯為繁體中文，保留專有名詞、數字與時間資訊
+           - `optimized_html_from`：使用 $fromLanguage 的最佳化 HTML（保留原文）。
+           - `optimized_html_to`：在結構不變的情況下翻譯為 $toLanguage，保留專有名詞、數字與時間資訊。
         僅輸出 JSON 物件，不要加入額外說明文字。
     """.trimIndent()
 
     /**
      * 進行 HTML 優化與清理時使用的 user prompt。
      */
-    fun optimizeHtmlUserPrompt(title: String?, originalHtml: String): String = """
+    fun optimizeHtmlUserPrompt(title: String?, originalHtml: String, fromLanguage: String, toLanguage: String): String = """
         請清理下列文章 HTML，只保留與新聞主題直接相關的正文內容：
         標題：${title ?: "(no title)"}
         原始 HTML：
@@ -162,8 +176,8 @@ ${HTML_STRUCTURE_RULES.prependIndent("       ")}
 
         請產生 JSON：
         {
-          "optimized_html": string,
-          "optimized_zh_html": string
+          "optimized_html_from": string,
+          "optimized_html_to": string
         }
 
         產出要求：
@@ -175,16 +189,22 @@ ${HTML_STRUCTURE_RULES.prependIndent("       ")}
         - 移除所有 class、style、data-* 屬性
         - 移除與內文無關或重複的元素、追蹤程式碼
         - 保持內容的原始順序與完整性
-        - `optimized_html` 維持英文原文；`optimized_zh_html` 需翻譯為繁體中文並保持對應段落
+        - `optimized_html_from` 維持 $fromLanguage 原文；`optimized_html_to` 需翻譯為 $toLanguage 並保持對應段落
     """.trimIndent()
 
     /**
      * Stage 1 Rewrite System Prompt，依照難度調整篇幅與語域。
      */
-    fun rewriteStage1SystemPrompt(difficulty: DifficultyLevel): String {
+    fun rewriteStage1SystemPrompt(
+        difficulty: DifficultyLevel,
+        fromLanguage: String,
+        toLanguage: String
+    ): String {
         val difficultyInstruction = difficultyWritingInstruction(difficulty)
         return """
-        你是專業的英文新聞重寫助手，需根據指定難度輸出。
+        你是專業的新聞重寫助手，需根據指定難度輸出。
+        - 原文語言：$fromLanguage
+        - 目標語言：$toLanguage
         難度設定：${difficulty.label}（${difficulty.cefrCode}）
         $difficultyInstruction
         通用要求：
@@ -199,11 +219,17 @@ ${HTML_STRUCTURE_RULES.prependIndent("          ")}
     /**
      * Stage 1 Rewrite User Prompt，包含保留圖片的指示。
      */
-    fun rewriteStage1UserPrompt(difficulty: DifficultyLevel, title: String?, originalHtml: String): String {
+    fun rewriteStage1UserPrompt(
+        difficulty: DifficultyLevel,
+        title: String?,
+        originalHtml: String,
+        fromLanguage: String,
+        toLanguage: String
+    ): String {
         val difficultyInstruction = difficultyWritingInstruction(difficulty)
         val wordRangeHint = difficultyWordRangeHint(difficulty)
         return """
-        請依照 ${difficulty.label}（${difficulty.cefrCode}）難度重寫下列文章：
+        請依照 ${difficulty.label}（${difficulty.cefrCode}）難度，使用 $fromLanguage 原文與 $toLanguage 譯文重寫下列文章：
         標題：${title ?: "(no title)"}
         原始HTML：```html
         $originalHtml
@@ -211,11 +237,12 @@ ${HTML_STRUCTURE_RULES.prependIndent("          ")}
 
         請以 JSON 物件回覆，鍵名固定如下（使用英文 key，所有中文請一律使用「繁體中文」）：
         {
-          "optimized_html": string,
-          "optimized_zh_html": string,
-          "title": string,
-          "cleaned_text": string,
-          "cleaned_text_zh": string
+          "optimized_html_from": string,
+          "optimized_html_to": string,
+          "title_from": string,
+          "title_to": string,
+          "cleaned_text_from": string,
+          "cleaned_text_to": string
         }
 
         難度與篇幅要求：$wordRangeHint
@@ -230,19 +257,23 @@ ${HTML_STRUCTURE_RULES.prependIndent("          ")}
     /**
      * Stage 2 Teaching System Prompt，根據難度設定解說深度。
      */
-    fun teachingStage2SystemPrompt(difficulty: DifficultyLevel): String {
+    fun teachingStage2SystemPrompt(
+        difficulty: DifficultyLevel,
+        fromLanguage: String,
+        toLanguage: String
+    ): String {
         val explanationTask = explanationTaskDescription(difficulty)
         return """
         你是專業的英文新聞教學助手，需依 ${difficulty.label}（${difficulty.cefrCode}）難度撰寫教學。
+        - 原文語言：$fromLanguage
+        - 目標語言：$toLanguage
         任務：
         1) 以「英文教學者」身份，撰寫詳盡講解：
 $explanationTask
-        2) 請針對重寫後的文章提供適當的英文標題 (title) 與其繁體中文翻譯 (title_zh)，
-           - 英文標題可根據內容創作，不一定使用原標題；
-           - 中文標題需忠實翻譯英文標題。
-        3) 生成雙語摘要 (summary_en, summary_zh)：
-           - 英文摘要 summary_en 請使用 Markdown 條列式（每一點以 "- " 起始，至少三點），簡潔明確。
-           - 中文摘要 summary_zh 請忠實翻譯英文摘要，亦需條列（至少三點）。
+        2) 針對重寫後的文章提供雙語標題：`title_from` (使用 $fromLanguage) 與 `title_to` (使用 $toLanguage)。
+        3) 生成雙語摘要 (`summary_from`、`summary_to`)：
+           - `summary_from`：使用 $fromLanguage，Markdown 條列式（至少三點）。
+           - `summary_to`：`summary_from` 的 $toLanguage 翻譯。
         4) HTML 結構必須遵守以下規則：
 ${HTML_STRUCTURE_RULES.prependIndent("           ")}
         僅輸出 JSON 物件，不要多餘文字。
@@ -252,10 +283,16 @@ ${HTML_STRUCTURE_RULES.prependIndent("           ")}
     /**
      * Stage 2 Teaching User Prompt.
      */
-    fun teachingStage2UserPrompt(difficulty: DifficultyLevel, title: String, rewrittenText: String): String {
+    fun teachingStage2UserPrompt(
+        difficulty: DifficultyLevel,
+        title: String,
+        rewrittenText: String,
+        fromLanguage: String,
+        toLanguage: String
+    ): String {
         val explanationTask = explanationTaskDescription(difficulty)
         return """
-        請依 ${difficulty.label}（${difficulty.cefrCode}）難度教學下列重寫後的文章：
+        請依 ${difficulty.label}（${difficulty.cefrCode}）難度，使用 $fromLanguage/$toLanguage 雙語教學下列文章：
         標題：$title
         重寫後的英文內文：```text
         $rewrittenText
@@ -263,10 +300,10 @@ ${HTML_STRUCTURE_RULES.prependIndent("           ")}
 
         請以 JSON 物件回覆，鍵名固定如下（使用英文 key，所有中文請一律使用「繁體中文」）：
         {
-          "title": string,              // 可以使用原標題或為內容創作更適合的新標題
-          "title_zh": string,           // 標題的繁體中文翻譯
-          "summary_en": string,         // 英文摘要（條列式，至少 3 點）
-          "summary_zh": string,         // 繁體中文摘要（條列式，至少 3 點）
+          "title_from": string,         // 使用 $fromLanguage，可自訂
+          "title_to": string,           // 翻譯為 $toLanguage
+          "summary_from": string,       // $fromLanguage 條列摘要（至少 3 點）
+          "summary_to": string,         // $toLanguage 對應翻譯
 ${EXPLANATION_JSON_SCHEMA.prependIndent("          ")}
         }
 

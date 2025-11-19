@@ -13,7 +13,7 @@ import java.time.OffsetDateTime
  * @property titleZh 中文標題（AI 翻譯）
  * @property summaryEn AI 產生的英文摘要
  * @property summaryZh AI 產生的中文摘要
- * @property difficultyContents 依難度儲存的重寫內容
+ * @property views 依語言與難度切分的視圖內容
  * @property id AI 文章唯一識別碼
  * @property createdAt 建立時間
  * @property updatedAt 更新時間
@@ -46,9 +46,9 @@ class ArticleAi(
     @Column(name = "summary_zh", columnDefinition = "LONGTEXT")
     var summaryZh: String? = null,
 
-    /** 依難度儲存的重寫內容 */
+    /** 依語言與難度儲存的視圖內容 */
     @OneToMany(mappedBy = "articleAi", cascade = [CascadeType.ALL], orphanRemoval = true, fetch = FetchType.EAGER)
-    var difficultyContents: MutableSet<ArticleAiContent> = mutableSetOf()
+    var views: MutableSet<ArticleAiView> = mutableSetOf()
 ) {
     /** AI 文章唯一識別碼（自動遞增） */
     @Id

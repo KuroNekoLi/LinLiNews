@@ -492,7 +492,11 @@ class ArticleQueryController(
             description = "指定文章輸出的難度等級（Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
             schema = Schema(implementation = DifficultyLevel::class)
         )
-        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?
+        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?,
+        @Parameter(description = "原文語言碼（預設 en）")
+        @RequestParam(name = "fromLanguage", defaultValue = "en") fromLanguage: String,
+        @Parameter(description = "目標語言碼（預設 zh-TW）")
+        @RequestParam(name = "toLanguage", defaultValue = "zh-TW") toLanguage: String
     ): ResponseEntity<AiArticleDetail> {
         val article = articleRepository.findById(id).orElse(null)
             ?: return ResponseEntity.notFound().build()
@@ -500,7 +504,7 @@ class ArticleQueryController(
             return ResponseEntity.badRequest().build()
         }
         return try {
-            val dto = aiArticleService.processAndOverwriteDto(id, difficulty)
+            val dto = aiArticleService.processAndOverwriteDto(id, difficulty, fromLanguage, toLanguage)
             ResponseEntity.ok(dto)
         } catch (e: com.linli.news.service.AiQuotaException) {
             // Map to 429; client should stop retrying until quota is fixed.

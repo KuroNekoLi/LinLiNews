@@ -4,13 +4,27 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.linli.news.domain.Article
 import com.linli.news.domain.ArticleAi
-import com.linli.news.domain.ArticleAiContent
+import com.linli.news.domain.ArticleAiComprehensionMcq
+import com.linli.news.domain.ArticleAiComprehensionOption
+import com.linli.news.domain.ArticleAiGrammarItem
+import com.linli.news.domain.ArticleAiPhraseIdiomItem
+import com.linli.news.domain.ArticleAiSentencePatternItem
+import com.linli.news.domain.ArticleAiView
+import com.linli.news.domain.ArticleAiVocabularyItem
 import com.linli.news.model.AiArticleDetail
+import com.linli.news.model.AiViewAvailability
+import com.linli.news.model.ComprehensionMcqItem
 import com.linli.news.model.DifficultyContent
 import com.linli.news.model.DifficultyLevel
 import com.linli.news.model.Explanation
+import com.linli.news.model.GrammarItem
+import com.linli.news.model.McqOption
+import com.linli.news.model.PhraseIdiomItem
+import com.linli.news.model.SentencePatternItem
+import com.linli.news.model.VocabularyItem
 import com.linli.news.repository.ArticleAiRepository
 import com.linli.news.repository.ArticleRepository
+import com.linli.news.service.HtmlOptimizationResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
@@ -34,17 +48,30 @@ class AiArticleService(
     private val aiProcessor: AiArticleProcessorService
 ) {
 
+    companion object {
+        private const val DEFAULT_FROM_LANGUAGE = "en"
+        private const val DEFAULT_TO_LANGUAGE = "zh-TW"
+    }
+
     private val logger = LoggerFactory.getLogger(AiArticleService::class.java)
     private val objectMapper = ObjectMapper()
     private val htmlTagPattern: Pattern = Pattern.compile("<[^>]*>")
 
-    /**
-     * HTML 優化結果資料型別
-     */
-    data class HtmlOptimizationResult(
-        val optimizedHtml: String,
-        val optimizedZhHtml: String?
-    )
+    private fun normalizeLanguage(language: String?, defaultValue: String): String {
+        val fallback = language?.trim()?.takeIf { it.isNotEmpty() } ?: defaultValue
+        val parts = fallback.split('-', limit = 2)
+        return if (parts.size == 2) {
+            "${parts[0].lowercase()}-${parts[1].uppercase()}"
+        } else {
+            fallback.lowercase()
+        }
+    }
+
+    private fun normalizeLanguagePair(fromLanguage: String?, toLanguage: String?): Pair<String, String> {
+        val normalizedFrom = normalizeLanguage(fromLanguage, DEFAULT_FROM_LANGUAGE)
+        val normalizedTo = normalizeLanguage(toLanguage, DEFAULT_TO_LANGUAGE)
+        return normalizedFrom to normalizedTo
+    }
 
     @Transactional(readOnly = true)
     fun listProcessed(page: Int, size: Int): Page<ArticleAi> {
@@ -112,7 +139,12 @@ class AiArticleService(
         logger.info("Calling AI processor for article ID {}: '{}'", articleId, article.title)
         val json: JsonNode = try {
             val aiStart = System.currentTimeMillis()
-            val result = aiProcessor.process(article.title, textContent)
+            val result = aiProcessor.process(
+                article.title,
+                textContent,
+                DEFAULT_FROM_LANGUAGE,
+                DEFAULT_TO_LANGUAGE
+            )
             logger.info(
                 "AI processing completed in {}ms for article ID {}",
                 System.currentTimeMillis() - aiStart,
@@ -129,16 +161,18 @@ class AiArticleService(
 
         val optimizedResult = try {
             val htmlStart = System.currentTimeMillis()
-            val result = aiProcessor.optimizeHtml(article.title, article.contentHtml!!)
+            val result = aiProcessor.optimizeHtml(
+                article.title,
+                article.contentHtml!!,
+                DEFAULT_FROM_LANGUAGE,
+                DEFAULT_TO_LANGUAGE
+            )
             logger.info(
                 "HTML optimization completed in {}ms for article ID {}",
                 System.currentTimeMillis() - htmlStart,
                 articleId
             )
-            HtmlOptimizationResult(
-                optimizedHtml = result.optimizedHtml,
-                optimizedZhHtml = result.optimizedZhHtml
-            )
+            result
         } catch (e: AiQuotaException) {
             logger.error("AI quota exceeded during HTML optimization for article ID {}: {}", articleId, e.message)
             throw ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, e.message, e)
@@ -163,44 +197,269 @@ class AiArticleService(
     private fun ArticleAi.applyFrom(
         json: JsonNode,
         optimizedResult: HtmlOptimizationResult,
-        difficulty: DifficultyLevel
+        difficulty: DifficultyLevel,
+        fromLanguage: String,
+        toLanguage: String
     ): ArticleAi {
-        title = json.path("title").asText(null)
-        titleZh = json.path("title_zh").asText(null)
-        summaryEn = json.path("summary_en").asText(null)
-        summaryZh = json.path("summary_zh").asText(null)
+        val titleFrom = json.path("title_from").asText(null) ?: json.path("title").asText(null)
+        val titleTo = json.path("title_to").asText(null) ?: json.path("title_zh").asText(null)
+        val summaryFrom = json.path("summary_from").asText(null) ?: json.path("summary_en").asText(null)
+        val summaryTo = json.path("summary_to").asText(null) ?: json.path("summary_zh").asText(null)
 
-        val targetContent = difficultyContents.firstOrNull { it.difficulty == difficulty }
-            ?: ArticleAiContent(articleAi = this, difficulty = difficulty).also { difficultyContents.add(it) }
+        title = titleFrom
+        titleZh = titleTo
+        summaryEn = summaryFrom
+        summaryZh = summaryTo
 
-        targetContent.optimizedHtml = optimizedResult.optimizedHtml
-        targetContent.optimizedZhHtml = optimizedResult.optimizedZhHtml
-        targetContent.cleanedText = json.path("cleaned_text").asText(null)
-        targetContent.cleanedTextZh = json.path("cleaned_text_zh").asText(null)
+        val targetView = findOrCreateView(difficulty, fromLanguage, toLanguage)
+        targetView.titleFrom = titleFrom
+        targetView.titleTo = titleTo
+        targetView.summaryFrom = summaryFrom
+        targetView.summaryTo = summaryTo
 
-        val expNode = json.path("explanation")
-        if (!expNode.isMissingNode && !expNode.isNull && expNode.isObject) {
-            targetContent.explanation = expNode.toString()
+        val optimizedFrom = optimizedResult.optimizedHtmlFrom
+            ?: json.path("optimized_html_from").asText(null)
+            ?: json.path("optimized_html").asText(null)
+        val optimizedTo = optimizedResult.optimizedHtmlTo
+            ?: json.path("optimized_html_to").asText(null)
+            ?: json.path("optimized_zh_html").asText(null)
+
+        targetView.optimizedHtmlFrom = optimizedFrom
+        targetView.optimizedHtmlTo = optimizedTo
+        targetView.cleanedTextFrom = json.path("cleaned_text_from").asText(null)
+            ?: json.path("cleaned_text").asText(null)
+        targetView.cleanedTextTo = json.path("cleaned_text_to").asText(null)
+            ?: json.path("cleaned_text_zh").asText(null)
+
+        val explanationNode = json.path("explanation")
+        val explanationModel = if (!explanationNode.isMissingNode && !explanationNode.isNull && explanationNode.isObject) {
+            parseExplanationNode(explanationNode)
+        } else {
+            null
         }
-
-        targetContent.updatedAt = OffsetDateTime.now()
+        targetView.applyExplanation(explanationModel, explanationNode?.toString())
+        targetView.updatedAt = OffsetDateTime.now()
 
         return this
     }
 
+    private fun ArticleAi.findOrCreateView(
+        difficulty: DifficultyLevel,
+        fromLanguage: String,
+        toLanguage: String
+    ): ArticleAiView {
+        return views.firstOrNull {
+            it.difficulty == difficulty &&
+                it.fromLanguage.equals(fromLanguage, ignoreCase = true) &&
+                it.toLanguage.equals(toLanguage, ignoreCase = true)
+        } ?: ArticleAiView(
+            articleAi = this,
+            difficulty = difficulty,
+            fromLanguage = fromLanguage,
+            toLanguage = toLanguage
+        ).also { views.add(it) }
+    }
+
+    private fun ArticleAiView.applyExplanation(explanation: Explanation?, legacyJson: String?) {
+        vocabularyItems.clear()
+        grammarItems.clear()
+        sentencePatternItems.clear()
+        phraseIdiomItems.clear()
+        comprehensionQuestions.clear()
+
+        explanation?.vocabulary?.forEachIndexed { index, item ->
+            vocabularyItems.add(
+                ArticleAiVocabularyItem(
+                    articleAiView = this,
+                    sortOrder = index,
+                    pos = item.pos,
+                    wordFrom = item.wordFrom,
+                    wordTo = item.wordTo,
+                    definitionFrom = item.definitionFrom,
+                    definitionTo = item.definitionTo,
+                    exampleFrom = item.exampleFrom,
+                    exampleTo = item.exampleTo
+                )
+            )
+        }
+
+        explanation?.grammar?.forEachIndexed { index, item ->
+            grammarItems.add(
+                ArticleAiGrammarItem(
+                    articleAiView = this,
+                    sortOrder = index,
+                    ruleFrom = item.ruleFrom,
+                    ruleTo = item.ruleTo,
+                    explanationFrom = item.explanationFrom,
+                    explanationTo = item.explanationTo,
+                    exampleFrom = item.exampleFrom,
+                    exampleTo = item.exampleTo
+                )
+            )
+        }
+
+        explanation?.sentencePatterns?.forEachIndexed { index, item ->
+            sentencePatternItems.add(
+                ArticleAiSentencePatternItem(
+                    articleAiView = this,
+                    sortOrder = index,
+                    patternFrom = item.patternFrom,
+                    patternTo = item.patternTo,
+                    explanationFrom = item.explanationFrom,
+                    explanationTo = item.explanationTo,
+                    exampleFrom = item.exampleFrom,
+                    exampleTo = item.exampleTo
+                )
+            )
+        }
+
+        explanation?.phrasesIdioms?.forEachIndexed { index, item ->
+            phraseIdiomItems.add(
+                ArticleAiPhraseIdiomItem(
+                    articleAiView = this,
+                    sortOrder = index,
+                    phraseFrom = item.phraseFrom,
+                    phraseTo = item.phraseTo,
+                    explanationFrom = item.explanationFrom,
+                    explanationTo = item.explanationTo,
+                    exampleFrom = item.exampleFrom,
+                    exampleTo = item.exampleTo
+                )
+            )
+        }
+
+        explanation?.comprehensionMcq?.forEachIndexed { index, item ->
+            val mcqEntity = ArticleAiComprehensionMcq(
+                articleAiView = this,
+                sortOrder = index,
+                questionFrom = item.questionFrom,
+                questionTo = item.questionTo,
+                answer = item.answer,
+                explanationFrom = item.explanationFrom,
+                explanationTo = item.explanationTo
+            )
+            item.options?.forEach { option ->
+                mcqEntity.options.add(
+                    ArticleAiComprehensionOption(
+                        mcq = mcqEntity,
+                        label = option.label,
+                        textFrom = option.textFrom,
+                        textTo = option.textTo
+                    )
+                )
+            }
+            comprehensionQuestions.add(mcqEntity)
+        }
+
+        legacyExplanationJson = legacyJson
+    }
+
+    private fun ArticleAiView.buildExplanationModel(): Explanation? {
+        val vocab = vocabularyItems
+            .sortedBy { it.sortOrder }
+            .map {
+                VocabularyItem(
+                    pos = it.pos,
+                    wordFrom = it.wordFrom,
+                    wordTo = it.wordTo,
+                    definitionFrom = it.definitionFrom,
+                    definitionTo = it.definitionTo,
+                    exampleFrom = it.exampleFrom,
+                    exampleTo = it.exampleTo
+                )
+            }
+            .takeIf { it.isNotEmpty() }
+
+        val grammar = grammarItems
+            .sortedBy { it.sortOrder }
+            .map {
+                GrammarItem(
+                    ruleFrom = it.ruleFrom,
+                    ruleTo = it.ruleTo,
+                    explanationFrom = it.explanationFrom,
+                    explanationTo = it.explanationTo,
+                    exampleFrom = it.exampleFrom,
+                    exampleTo = it.exampleTo
+                )
+            }
+            .takeIf { it.isNotEmpty() }
+
+        val sentencePatterns = sentencePatternItems
+            .sortedBy { it.sortOrder }
+            .map {
+                SentencePatternItem(
+                    patternFrom = it.patternFrom,
+                    patternTo = it.patternTo,
+                    explanationFrom = it.explanationFrom,
+                    explanationTo = it.explanationTo,
+                    exampleFrom = it.exampleFrom,
+                    exampleTo = it.exampleTo
+                )
+            }
+            .takeIf { it.isNotEmpty() }
+
+        val phrasesIdioms = phraseIdiomItems
+            .sortedBy { it.sortOrder }
+            .map {
+                PhraseIdiomItem(
+                    phraseFrom = it.phraseFrom,
+                    phraseTo = it.phraseTo,
+                    explanationFrom = it.explanationFrom,
+                    explanationTo = it.explanationTo,
+                    exampleFrom = it.exampleFrom,
+                    exampleTo = it.exampleTo
+                )
+            }
+            .takeIf { it.isNotEmpty() }
+
+        val comprehensionMcq = comprehensionQuestions
+            .sortedBy { it.sortOrder }
+            .map { mcq ->
+                ComprehensionMcqItem(
+                    questionFrom = mcq.questionFrom,
+                    questionTo = mcq.questionTo,
+                    answer = mcq.answer,
+                    explanationFrom = mcq.explanationFrom,
+                    explanationTo = mcq.explanationTo,
+                    options = mcq.options
+                        .sortedBy { it.label }
+                        .map { option ->
+                            McqOption(
+                                label = option.label,
+                                textFrom = option.textFrom,
+                                textTo = option.textTo
+                            )
+                        }
+                )
+            }
+            .takeIf { it.isNotEmpty() }
+
+        if (vocab == null && grammar == null && sentencePatterns == null && phrasesIdioms == null && comprehensionMcq == null) {
+            return legacyExplanationJson?.let { parseLegacyExplanation(it) }
+        }
+
+        return Explanation(
+            vocabulary = vocab,
+            grammar = grammar,
+            sentencePatterns = sentencePatterns,
+            phrasesIdioms = phrasesIdioms,
+            comprehensionMcq = comprehensionMcq
+        )
+    }
+
     /**
-     * 將資料庫實體轉成 API 用的難度內容模型。
+     * 將資料庫視圖轉成 API 用的難度內容模型。
      */
-    private fun ArticleAiContent.toDifficultyContent(): DifficultyContent {
-        val explanationNode = explanation?.let { runCatching { objectMapper.readTree(it) }.getOrNull() }
-        val explanationModel = explanationNode?.let { parseExplanationNode(it) }
+    private fun ArticleAiView.toDifficultyContent(): DifficultyContent {
         return DifficultyContent(
             difficulty = difficulty,
-            optimizedHtml = optimizedHtml,
-            optimizedZhHtml = optimizedZhHtml,
-            cleanedText = cleanedText,
-            cleanedTextZh = cleanedTextZh,
-            explanation = explanationModel
+            fromLanguage = fromLanguage,
+            toLanguage = toLanguage,
+            optimizedHtmlFrom = optimizedHtmlFrom,
+            optimizedHtmlTo = optimizedHtmlTo,
+            cleanedTextFrom = cleanedTextFrom,
+            cleanedTextTo = cleanedTextTo,
+            explanation = buildExplanationModel()
         )
     }
 
@@ -209,14 +468,24 @@ class AiArticleService(
         article: Article,
         json: JsonNode,
         optimizedResult: HtmlOptimizationResult,
-        difficulty: DifficultyLevel = DifficultyLevel.NORMAL
+        difficulty: DifficultyLevel = DifficultyLevel.NORMAL,
+        fromLanguage: String = DEFAULT_FROM_LANGUAGE,
+        toLanguage: String = DEFAULT_TO_LANGUAGE
     ): ArticleAi {
         val startTime = System.currentTimeMillis()
         logger.info("Saving AI result for article ID {}", article.id)
+        val normalizedFrom = normalizeLanguage(fromLanguage, DEFAULT_FROM_LANGUAGE)
+        val normalizedTo = normalizeLanguage(toLanguage, DEFAULT_TO_LANGUAGE)
 
         try {
             // 直接插入
-            val entity = ArticleAi(article = article).applyFrom(json, optimizedResult, difficulty)
+            val entity = ArticleAi(article = article).applyFrom(
+                json,
+                optimizedResult,
+                difficulty,
+                normalizedFrom,
+                normalizedTo
+            )
             val savedEntity = articleAiRepository.save(entity)
             logger.info(
                 "Direct save successful for article ID {} in {}ms",
@@ -231,7 +500,7 @@ class AiArticleService(
             // 查詢+更新
             val existing = articleAiRepository.findByArticle_Id(article.id!!).orElse(
                 ArticleAi(article = article)
-            ).applyFrom(json, optimizedResult, difficulty)
+            ).applyFrom(json, optimizedResult, difficulty, normalizedFrom, normalizedTo)
 
             val savedEntity = articleAiRepository.save(existing)
             logger.info(
@@ -268,7 +537,9 @@ class AiArticleService(
         count: Int,
         source: String?,
         section: String?,
-        difficulty: DifficultyLevel?
+        difficulty: DifficultyLevel?,
+        fromLanguage: String?,
+        toLanguage: String?
     ): Pair<List<ArticleAi>, Int> {
         val page = PageRequest.of(0, 10000)
         val pageData = when {
@@ -286,9 +557,24 @@ class AiArticleService(
         val all = pageData.content
         if (all.isEmpty()) return Pair(emptyList(), 0)
 
-        val eligible = difficulty?.let { level ->
-            all.filter { article -> article.difficultyContents.any { it.difficulty == level } }
-        } ?: all
+        val (normalizedFrom, normalizedTo) = normalizeLanguagePair(fromLanguage, toLanguage)
+        val eligibleByLang = all.filter { article ->
+            article.views.any {
+                it.fromLanguage.equals(normalizedFrom, ignoreCase = true) &&
+                    it.toLanguage.equals(normalizedTo, ignoreCase = true)
+            }
+        }
+        val eligible = if (difficulty != null) {
+            eligibleByLang.filter { article ->
+                article.views.any {
+                    it.difficulty == difficulty &&
+                        it.fromLanguage.equals(normalizedFrom, ignoreCase = true) &&
+                        it.toLanguage.equals(normalizedTo, ignoreCase = true)
+                }
+            }
+        } else {
+            if (eligibleByLang.isNotEmpty()) eligibleByLang else all
+        }
 
         if (eligible.isEmpty()) {
             return Pair(emptyList(), 0)
@@ -315,7 +601,9 @@ class AiArticleService(
         count: Int,
         source: String?,
         section: String?,
-        difficulty: DifficultyLevel?
+        difficulty: DifficultyLevel?,
+        fromLanguage: String?,
+        toLanguage: String?
     ): Triple<List<ArticleAi>, Int, Int> {
         val allArticles = loadProcessableArticles(source, section)
 
@@ -324,6 +612,7 @@ class AiArticleService(
         }
 
         val selectedArticles = allArticles.pickRandom(count)
+        val (normalizedFrom, normalizedTo) = normalizeLanguagePair(fromLanguage, toLanguage)
 
         logger.info(
             "Starting random processing of {} articles (source={}, section={})",
@@ -359,7 +648,12 @@ class AiArticleService(
                             // 3. AI 處理（不在 DB 交易內，可並行）
                             val json: JsonNode = try {
                                 val aiStart = System.currentTimeMillis()
-                                val result = aiProcessor.process(fullArticle.title, textContent)
+                                val result = aiProcessor.process(
+                                    fullArticle.title,
+                                    textContent,
+                                    normalizedFrom,
+                                    normalizedTo
+                                )
                                 logger.info(
                                     "AI processing completed in {}ms for article ID {} (randomWithProcessing)",
                                     System.currentTimeMillis() - aiStart,
@@ -379,16 +673,18 @@ class AiArticleService(
 
                             val optimizedResult = try {
                                 val htmlStart = System.currentTimeMillis()
-                                val r = aiProcessor.optimizeHtml(fullArticle.title, fullArticle.contentHtml!!)
+                                val r = aiProcessor.optimizeHtml(
+                                    fullArticle.title,
+                                    fullArticle.contentHtml!!,
+                                    normalizedFrom,
+                                    normalizedTo
+                                )
                                 logger.info(
                                     "HTML optimization completed in {}ms for article ID {} (randomWithProcessing)",
                                     System.currentTimeMillis() - htmlStart,
                                     articleId
                                 )
-                                HtmlOptimizationResult(
-                                    optimizedHtml = r.optimizedHtml,
-                                    optimizedZhHtml = r.optimizedZhHtml
-                                )
+                                r
                             } catch (e: AiQuotaException) {
                                 logger.error(
                                     "AI quota exceeded during HTML optimization for article ID {}: {}",
@@ -408,7 +704,14 @@ class AiArticleService(
 
                             // 4. 寫入：透過 Semaphore 確保同一時間只有一個寫入
                             writeSemaphore.withPermit {
-                                saveAiResult(fullArticle, json, optimizedResult, difficulty ?: DifficultyLevel.NORMAL)
+                                saveAiResult(
+                                    fullArticle,
+                                    json,
+                                    optimizedResult,
+                                    difficulty ?: DifficultyLevel.NORMAL,
+                                    normalizedFrom,
+                                    normalizedTo
+                                )
                             }
                         }
 
@@ -444,7 +747,9 @@ class AiArticleService(
         count: Int,
         source: String?,
         section: String?,
-        difficulty: DifficultyLevel?
+        difficulty: DifficultyLevel?,
+        fromLanguage: String?,
+        toLanguage: String?
     ): Triple<List<ArticleAi>, Int, Int> {
         // 實現與 randomWithProcessing 類似的邏輯，但包含 AI 重寫和處理
         val allArticles = loadProcessableArticles(source, section)
@@ -454,6 +759,7 @@ class AiArticleService(
         }
 
         val selectedArticles = allArticles.pickRandom(count)
+        val (normalizedFrom, normalizedTo) = normalizeLanguagePair(fromLanguage, toLanguage)
 
         logger.info(
             "Starting random processing of {} articles (source={}, section={})",
@@ -491,8 +797,13 @@ class AiArticleService(
                             val difficultyLevel = difficulty ?: DifficultyLevel.NORMAL
                             val combinedResult: JsonNode = try {
                                 val aiStart = System.currentTimeMillis()
-                                val stage1Result =
-                                    aiProcessor.rewriteStage1(difficultyLevel, fullArticle.title, fullArticle.contentHtml!!)
+                                val stage1Result = aiProcessor.rewriteStage1(
+                                    difficultyLevel,
+                                    fullArticle.title,
+                                    fullArticle.contentHtml!!,
+                                    normalizedFrom,
+                                    normalizedTo
+                                )
                                 logger.info(
                                     "AI rewrite stage 1 completed in {}ms for article ID {} (randomWithRewriteAndProcessing)",
                                     System.currentTimeMillis() - aiStart,
@@ -500,10 +811,18 @@ class AiArticleService(
                                 )
 
                                 // Validate rewrite stage 1 result
-                                val stage1CleanedText = stage1Result.path("cleaned_text").asText("")
-                                val stage1Title = stage1Result.path("title").asText("")
+                                val stage1CleanedText = stage1Result.path("cleaned_text_from").asText(
+                                    stage1Result.path("cleaned_text").asText("")
+                                )
+                                val stage1Title = stage1Result.path("title_from").asText(
+                                    stage1Result.path("title").asText("")
+                                )
                                 val wordCountStage1 = countEnglishWords(stage1CleanedText)
-                                val hasEnoughPara = hasEnoughParagraphs(stage1Result.path("optimized_html").asText(""))
+                                val hasEnoughPara = hasEnoughParagraphs(
+                                    stage1Result.path("optimized_html_from").asText(
+                                        stage1Result.path("optimized_html").asText("")
+                                    )
+                                )
 
                                 logger.info(
                                     "Stage 1 validation: word count = {}, title present = {}, has enough paragraphs = {}",
@@ -518,7 +837,9 @@ class AiArticleService(
                                 val stage2Result = aiProcessor.teachingStage2(
                                     difficultyLevel,
                                     stage1Title,
-                                    stage1CleanedText
+                                    stage1CleanedText,
+                                    normalizedFrom,
+                                    normalizedTo
                                 )
                                 logger.info(
                                     "AI teaching stage 2 completed in {}ms for article ID {} (randomWithRewriteAndProcessing)",
@@ -529,23 +850,48 @@ class AiArticleService(
                                 val combined = objectMapper.createObjectNode()
 
                                 // Stage1 的欄位：文章內容、HTML 與英文標題
-                                combined.put("title", stage1Result.path("title").asText(null))
-                                combined.put("cleaned_text", stage1Result.path("cleaned_text").asText(null))
-                                combined.put("cleaned_text_zh", stage1Result.path("cleaned_text_zh").asText(null))
-                                combined.put("optimized_html", stage1Result.path("optimized_html").asText(null))
-                                combined.put("optimized_zh_html", stage1Result.path("optimized_zh_html").asText(null))
+                                combined.put(
+                                    "title_from",
+                                    stage1Result.path("title_from").asText(stage1Result.path("title").asText(null))
+                                )
+                                combined.put(
+                                    "title_to",
+                                    stage1Result.path("title_to").asText(stage2Result.path("title_to").asText(null))
+                                )
+                                combined.put(
+                                    "cleaned_text_from",
+                                    stage1Result.path("cleaned_text_from").asText(stage1Result.path("cleaned_text").asText(null))
+                                )
+                                combined.put(
+                                    "cleaned_text_to",
+                                    stage1Result.path("cleaned_text_to").asText(stage1Result.path("cleaned_text_zh").asText(null))
+                                )
+                                combined.put(
+                                    "optimized_html_from",
+                                    stage1Result.path("optimized_html_from").asText(stage1Result.path("optimized_html").asText(null))
+                                )
+                                combined.put(
+                                    "optimized_html_to",
+                                    stage1Result.path("optimized_html_to").asText(stage1Result.path("optimized_zh_html").asText(null))
+                                )
                                 combined.put("word_count", stage1Result.path("word_count").asInt(wordCountStage1))
 
                                 // Stage2 的欄位：雙語標題、雙語摘要與解析
-                                combined.put("title_zh", stage2Result.path("title_zh").asText(null))
-                                combined.put("summary_en", stage2Result.path("summary_en").asText(null))
-                                combined.put("summary_zh", stage2Result.path("summary_zh").asText(null))
+                                combined.put(
+                                    "title_from",
+                                    stage2Result.path("title_from").asText(combined.path("title_from").asText(null))
+                                )
+                                combined.put(
+                                    "title_to",
+                                    stage2Result.path("title_to").asText(combined.path("title_to").asText(null))
+                                )
+                                combined.put("summary_from", stage2Result.path("summary_from").asText(null))
+                                combined.put("summary_to", stage2Result.path("summary_to").asText(null))
                                 combined.set<JsonNode>("explanation", stage2Result.path("explanation"))
 
-                                // 在特殊情況下，如果 Stage1 沒有提供標題，則使用 Stage2 的標題
-                                if (combined.path("title").isNull && !stage2Result.path("title").isNull) {
-                                    combined.put("title", stage2Result.path("title").asText(null))
-                                    logger.info("Fallback to title from Stage2")
+                                if (combined.path("title_from").isNull && !stage2Result.path("title_from").isNull) {
+                                    combined.put("title_from", stage2Result.path("title_from").asText(null))
+                                    logger.info("Fallback to title_from from Stage2")
                                 }
 
                                 logger.info(
@@ -570,9 +916,18 @@ class AiArticleService(
                             }
 
                             // 4. 建立優化後的 HTML 結果物件
+                            val optimizedFrom = combinedResult.path("optimized_html_from").asText(
+                                combinedResult.path("optimized_html").asText(null)
+                            )
+                            if (optimizedFrom.isNullOrBlank()) {
+                                throw IllegalStateException("AI 回應缺少 optimized_html_from 欄位")
+                            }
+                            val optimizedTo = combinedResult.path("optimized_html_to").asText(
+                                combinedResult.path("optimized_zh_html").asText(null)
+                            )
                             val optimizedResult = HtmlOptimizationResult(
-                                optimizedHtml = combinedResult.path("optimized_html").asText(null),
-                                optimizedZhHtml = combinedResult.path("optimized_zh_html").asText(null)
+                                optimizedHtmlFrom = optimizedFrom,
+                                optimizedHtmlTo = optimizedTo
                             )
 
                             // 驗證 AI 重寫與處理結果（註解改為繁體中文）
@@ -586,7 +941,14 @@ class AiArticleService(
 
                             // 5. 寫入：透過 Semaphore 確保同一時間只有一個寫入
                             writeSemaphore.withPermit {
-                                saveAiResult(fullArticle, combinedResult, optimizedResult, difficultyLevel)
+                                saveAiResult(
+                                    fullArticle,
+                                    combinedResult,
+                                    optimizedResult,
+                                    difficultyLevel,
+                                    normalizedFrom,
+                                    normalizedTo
+                                )
                             }
                         }
 
@@ -617,18 +979,6 @@ class AiArticleService(
         return Triple(result, allArticles.size, processedCount)
     }
 
-    data class RewriteAndProcessResult(
-        val optimizedHtml: String,
-        val optimizedZhHtml: String?,
-        val title: String?,
-        val titleZh: String?,
-        val summaryEn: String?,
-        val summaryZh: String?,
-        val cleanedText: String?,
-        val cleanedTextZh: String?,
-        val explanation: JsonNode
-    )
-
     /**
      * 檢查 HTML 是否有足夠的段落
      *
@@ -655,7 +1005,9 @@ class AiArticleService(
     private fun validateRewriteAndProcessResult(result: JsonNode, difficulty: DifficultyLevel): Boolean {
         try {
             // 1. 檢查字數
-            val cleanedText = result.path("cleaned_text").asText("")
+            val cleanedText = result.path("cleaned_text_from").asText(
+                result.path("cleaned_text").asText("")
+            )
             val ourCount = countEnglishWords(cleanedText)
             val minWords = difficulty.minWords
             val maxWords = difficulty.maxWords
@@ -668,7 +1020,9 @@ class AiArticleService(
             }
 
             // 2. 檢查段落數
-            val optimizedHtml = result.path("optimized_html").asText("")
+            val optimizedHtml = result.path("optimized_html_from").asText(
+                result.path("optimized_html").asText("")
+            )
             if (!hasEnoughParagraphs(optimizedHtml)) {
                 logger.warn("[AI] Article does not have enough paragraphs (minimum 4 required)")
                 return false
@@ -682,15 +1036,23 @@ class AiArticleService(
         }
     }
 
-    fun getOrProcessDto(articleId: Long, difficulty: DifficultyLevel?): AiArticleDetail {
+    fun getOrProcessDto(
+        articleId: Long,
+        difficulty: DifficultyLevel?,
+        fromLanguage: String?,
+        toLanguage: String?
+    ): AiArticleDetail {
+        val (normalizedFrom, normalizedTo) = normalizeLanguagePair(fromLanguage, toLanguage)
         val aiArticle = getOrProcess(articleId)
-        return toDto(aiArticle.article, aiArticle, difficulty)
+        return toDto(aiArticle.article, aiArticle, difficulty, normalizedFrom, normalizedTo)
     }
 
     @Transactional
     fun processAndOverwrite(
         articleId: Long,
-        difficulty: DifficultyLevel = DifficultyLevel.NORMAL
+        difficulty: DifficultyLevel = DifficultyLevel.NORMAL,
+        fromLanguage: String = DEFAULT_FROM_LANGUAGE,
+        toLanguage: String = DEFAULT_TO_LANGUAGE
     ): ArticleAi {
         val article = articleRepository.findById(articleId).orElseThrow()
         require(!article.contentHtml.isNullOrBlank()) { "Article has no contentHtml; please fetch full content first" }
@@ -699,13 +1061,13 @@ class AiArticleService(
         require(!textContent.isNullOrBlank()) { "Article textContent is empty after HTML extraction" }
 
         val json: JsonNode = try {
-            aiProcessor.process(article.title, textContent)
+            aiProcessor.process(article.title, textContent, fromLanguage, toLanguage)
         } catch (e: AiQuotaException) {
             throw ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, e.message, e)
         }
 
         val optimizedResult = try {
-            aiProcessor.optimizeHtml(article.title, article.contentHtml!!)
+            aiProcessor.optimizeHtml(article.title, article.contentHtml!!, fromLanguage, toLanguage)
         } catch (e: AiQuotaException) {
             throw ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, e.message, e)
         }
@@ -715,31 +1077,55 @@ class AiArticleService(
 
         entity.applyFrom(
             json,
-            HtmlOptimizationResult(optimizedResult.optimizedHtml, optimizedResult.optimizedZhHtml),
-            difficulty
+            optimizedResult,
+            difficulty,
+            fromLanguage,
+            toLanguage
         )
 
         return articleAiRepository.save(entity)
     }
 
-    fun processAndOverwriteDto(articleId: Long, difficulty: DifficultyLevel?): AiArticleDetail {
+    fun processAndOverwriteDto(
+        articleId: Long,
+        difficulty: DifficultyLevel?,
+        fromLanguage: String?,
+        toLanguage: String?
+    ): AiArticleDetail {
         val targetDifficulty = difficulty ?: DifficultyLevel.NORMAL
-        val aiArticle = processAndOverwrite(articleId, targetDifficulty)
-        return toDto(aiArticle.article, aiArticle, targetDifficulty)
+        val (normalizedFrom, normalizedTo) = normalizeLanguagePair(fromLanguage, toLanguage)
+        val aiArticle = processAndOverwrite(articleId, targetDifficulty, normalizedFrom, normalizedTo)
+        return toDto(aiArticle.article, aiArticle, targetDifficulty, normalizedFrom, normalizedTo)
     }
 
     private fun toDto(
         article: Article,
         aiArticle: ArticleAi,
-        requestedDifficulty: DifficultyLevel?
+        requestedDifficulty: DifficultyLevel?,
+        fromLanguage: String,
+        toLanguage: String
     ): AiArticleDetail {
         val articleId = requireNotNull(article.id) { "Article must have an ID" }
-        val selectedContent = selectContent(aiArticle, requestedDifficulty)
-        val difficultyContent = selectedContent?.toDifficultyContent()
-        val available = aiArticle.difficultyContents
+        val selectedView = selectView(aiArticle, requestedDifficulty, fromLanguage, toLanguage)
+        val difficultyContent = selectedView?.toDifficultyContent()
+        val availableForPair = aiArticle.views
+            .filter {
+                it.fromLanguage.equals(fromLanguage, ignoreCase = true) &&
+                    it.toLanguage.equals(toLanguage, ignoreCase = true)
+            }
             .map { it.difficulty }
             .distinct()
             .sortedBy { it.ordinal }
+        val availableViews = aiArticle.views
+            .map { AiViewAvailability(it.fromLanguage, it.toLanguage, it.difficulty) }
+            .sortedWith(compareBy<AiViewAvailability> { it.fromLanguage }.thenBy { it.toLanguage }.thenBy { it.difficulty.ordinal })
+
+        val finalFromLang = selectedView?.fromLanguage ?: fromLanguage
+        val finalToLang = selectedView?.toLanguage ?: toLanguage
+        val titleFrom = selectedView?.titleFrom ?: aiArticle.title ?: article.title
+        val titleTo = selectedView?.titleTo ?: aiArticle.titleZh
+        val summaryFrom = selectedView?.summaryFrom ?: aiArticle.summaryEn
+        val summaryTo = selectedView?.summaryTo ?: aiArticle.summaryZh
 
         return AiArticleDetail(
             id = articleId,
@@ -748,27 +1134,53 @@ class AiArticleService(
             title = article.title,
             publishedAt = article.publishedAt?.toString(),
             originalUrl = article.originalUrl,
-            contentHtml = difficultyContent?.optimizedHtml ?: article.contentHtml,
-            titleZh = aiArticle.titleZh,
-            summaryEn = aiArticle.summaryEn,
-            summaryZh = aiArticle.summaryZh,
+            contentHtml = difficultyContent?.optimizedHtmlFrom ?: article.contentHtml,
+            titleFrom = titleFrom,
+            titleTo = titleTo,
+            titleZh = titleTo,
+            summaryFrom = summaryFrom,
+            summaryTo = summaryTo,
+            summaryEn = summaryFrom,
+            summaryZh = summaryTo,
             requestedDifficulty = requestedDifficulty,
+            fromLanguage = finalFromLang,
+            toLanguage = finalToLang,
             content = difficultyContent,
-            availableDifficulties = available
+            availableDifficulties = availableForPair,
+            availableViews = availableViews
         )
     }
 
-    fun toDetail(aiArticle: ArticleAi, requestedDifficulty: DifficultyLevel?): AiArticleDetail {
-        return toDto(aiArticle.article, aiArticle, requestedDifficulty)
+    fun toDetail(
+        aiArticle: ArticleAi,
+        requestedDifficulty: DifficultyLevel?,
+        fromLanguage: String,
+        toLanguage: String
+    ): AiArticleDetail {
+        return toDto(aiArticle.article, aiArticle, requestedDifficulty, fromLanguage, toLanguage)
     }
 
-    private fun selectContent(aiArticle: ArticleAi, requestedDifficulty: DifficultyLevel?): ArticleAiContent? {
-        if (aiArticle.difficultyContents.isEmpty()) {
+    private fun selectView(
+        aiArticle: ArticleAi,
+        requestedDifficulty: DifficultyLevel?,
+        fromLanguage: String,
+        toLanguage: String
+    ): ArticleAiView? {
+        if (aiArticle.views.isEmpty()) {
             return null
         }
 
+        val normalizedFrom = fromLanguage
+        val normalizedTo = toLanguage
+        val matching = aiArticle.views.filter {
+            it.fromLanguage.equals(normalizedFrom, ignoreCase = true) &&
+                it.toLanguage.equals(normalizedTo, ignoreCase = true)
+        }
+
+        val candidates = if (matching.isNotEmpty()) matching else aiArticle.views
+
         if (requestedDifficulty != null) {
-            aiArticle.difficultyContents.firstOrNull { it.difficulty == requestedDifficulty }?.let { return it }
+            candidates.firstOrNull { it.difficulty == requestedDifficulty }?.let { return it }
         }
 
         val priority = listOf(
@@ -779,26 +1191,129 @@ class AiArticleService(
         )
 
         return priority.firstNotNullOfOrNull { level ->
-            aiArticle.difficultyContents.firstOrNull { it.difficulty == level }
-        } ?: aiArticle.difficultyContents.firstOrNull()
+            candidates.firstOrNull { it.difficulty == level }
+        } ?: candidates.firstOrNull()
     }
 
     /**
-     * 從 JsonNode 轉換 Explanation，並容忍未知欄位。
+     * 從 JsonNode 轉換 Explanation，並容忍舊欄位命名。
      */
     private fun parseExplanationNode(node: JsonNode): Explanation? {
-        val tolerantMapper = objectMapper.copy()
-        tolerantMapper.configure(
-            com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,
-            false
-        )
-        return try {
-            tolerantMapper.treeToValue(node, Explanation::class.java)
-        } catch (e: Exception) {
-            logger.warn("Failed to parse explanation node: ${e.message}")
-            null
+        if (!node.isObject) {
+            return null
         }
+
+        val vocabulary = node.arrayOrNull("vocabulary")?.mapNotNull { item ->
+            VocabularyItem(
+                pos = item.textValueOrNull("pos"),
+                wordFrom = item.textValueOrNull("word_from", "word_en"),
+                wordTo = item.textValueOrNull("word_to", "word_zh"),
+                definitionFrom = item.textValueOrNull("definition_from", "definition_en"),
+                definitionTo = item.textValueOrNull("definition_to", "definition_zh"),
+                exampleFrom = item.textValueOrNull("example_from", "example_en"),
+                exampleTo = item.textValueOrNull("example_to", "example_zh")
+            )
+        }?.takeIf { it.isNotEmpty() }
+
+        val grammar = node.arrayOrNull("grammar")?.mapNotNull { item ->
+            GrammarItem(
+                ruleFrom = item.textValueOrNull("rule_from", "rule_en"),
+                ruleTo = item.textValueOrNull("rule_to"),
+                explanationFrom = item.textValueOrNull("explanation_from", "explanation_en"),
+                explanationTo = item.textValueOrNull("explanation_to", "explanation_zh"),
+                exampleFrom = item.textValueOrNull("example_from", "example_en"),
+                exampleTo = item.textValueOrNull("example_to", "example_zh")
+            )
+        }?.takeIf { it.isNotEmpty() }
+
+        val sentencePatterns = node.arrayOrNull("sentence_patterns")?.mapNotNull { item ->
+            SentencePatternItem(
+                patternFrom = item.textValueOrNull("pattern_from", "pattern_en"),
+                patternTo = item.textValueOrNull("pattern_to"),
+                explanationFrom = item.textValueOrNull("explanation_from", "explanation_en"),
+                explanationTo = item.textValueOrNull("explanation_to", "explanation_zh"),
+                exampleFrom = item.textValueOrNull("example_from", "example_en"),
+                exampleTo = item.textValueOrNull("example_to", "example_zh")
+            )
+        }?.takeIf { it.isNotEmpty() }
+
+        val phrasesIdioms = node.arrayOrNull("phrases_idioms")?.mapNotNull { item ->
+            PhraseIdiomItem(
+                phraseFrom = item.textValueOrNull("phrase_from", "phrase_en"),
+                phraseTo = item.textValueOrNull("phrase_to"),
+                explanationFrom = item.textValueOrNull("explanation_from", "explanation_en"),
+                explanationTo = item.textValueOrNull("explanation_to", "explanation_zh"),
+                exampleFrom = item.textValueOrNull("example_from", "example_en"),
+                exampleTo = item.textValueOrNull("example_to", "example_zh")
+            )
+        }?.takeIf { it.isNotEmpty() }
+
+        val comprehensionMcq = node.arrayOrNull("comprehension_mcq")?.mapNotNull { item ->
+            val optionsNode = item.path("options")
+            val options = when {
+                optionsNode.isArray -> optionsNode.mapNotNull { optNode ->
+                    val label = optNode.textValueOrNull("label") ?: return@mapNotNull null
+                    McqOption(
+                        label = label,
+                        textFrom = optNode.textValueOrNull("text_from", "text_en"),
+                        textTo = optNode.textValueOrNull("text_to", "text_zh")
+                    )
+                }
+                optionsNode.isObject -> listOf("A", "B", "C", "D").mapNotNull { label ->
+                    optionsNode.textValueOrNull(label)?.let { text ->
+                        McqOption(
+                            label = label,
+                            textFrom = text,
+                            textTo = optionsNode.textValueOrNull("${label}_to", "${label}_zh")
+                        )
+                    }
+                }
+                else -> null
+            }?.takeIf { it.isNotEmpty() }
+
+            ComprehensionMcqItem(
+                questionFrom = item.textValueOrNull("question_from", "question_en"),
+                questionTo = item.textValueOrNull("question_to", "question_zh"),
+                options = options,
+                answer = item.textValueOrNull("answer"),
+                explanationFrom = item.textValueOrNull("explanation_from"),
+                explanationTo = item.textValueOrNull("explanation_to", "explanation_zh")
+            )
+        }?.takeIf { it.isNotEmpty() }
+
+        if (vocabulary == null && grammar == null && sentencePatterns == null && phrasesIdioms == null && comprehensionMcq == null) {
+            return null
+        }
+
+        return Explanation(
+            vocabulary = vocabulary,
+            grammar = grammar,
+            sentencePatterns = sentencePatterns,
+            phrasesIdioms = phrasesIdioms,
+            comprehensionMcq = comprehensionMcq
+        )
     }
+
+    private fun JsonNode.arrayOrNull(name: String): JsonNode? {
+        val child = this.path(name)
+        return if (child.isArray && child.size() > 0) child else null
+    }
+
+    private fun JsonNode.textValueOrNull(vararg fieldNames: String): String? {
+        fieldNames.forEach { name ->
+            val node = this.path(name)
+            if (!node.isMissingNode && !node.isNull) {
+                val value = node.asText(null)
+                if (!value.isNullOrBlank()) {
+                    return value
+                }
+            }
+        }
+        return null
+    }
+
+    private fun parseLegacyExplanation(json: String): Explanation? =
+        runCatching { objectMapper.readTree(json) }.getOrNull()?.let { parseExplanationNode(it) }
 
     private fun extractTextFromHtml(html: String?): String? {
         if (html == null) return null

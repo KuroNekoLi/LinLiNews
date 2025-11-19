@@ -61,9 +61,14 @@ class AiArticleController(
             description = "指定文章輸出的難度等級（Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
             schema = Schema(implementation = DifficultyLevel::class)
         )
-        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?
+        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?,
+        @Parameter(description = "原文語言碼（預設 en）")
+        @RequestParam(name = "fromLanguage", defaultValue = "en") fromLanguage: String,
+        @Parameter(description = "目標語言碼（預設 zh-TW）")
+        @RequestParam(name = "toLanguage", defaultValue = "zh-TW") toLanguage: String
     ): Page<AiArticleDetail> {
-        return aiArticleService.listProcessed(page, size).map { aiArticleService.toDetail(it, difficulty) }
+        return aiArticleService.listProcessed(page, size)
+            .map { aiArticleService.toDetail(it, difficulty, fromLanguage, toLanguage) }
     }
 
     /**
@@ -83,9 +88,13 @@ class AiArticleController(
             description = "指定文章輸出的難度等級（Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
             schema = Schema(implementation = DifficultyLevel::class)
         )
-        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?
+        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?,
+        @Parameter(description = "原文語言碼（預設 en）")
+        @RequestParam(name = "fromLanguage", defaultValue = "en") fromLanguage: String,
+        @Parameter(description = "目標語言碼（預設 zh-TW）")
+        @RequestParam(name = "toLanguage", defaultValue = "zh-TW") toLanguage: String
     ): AiArticleDetail {
-        return aiArticleService.getOrProcessDto(articleId, difficulty)
+        return aiArticleService.getOrProcessDto(articleId, difficulty, fromLanguage, toLanguage)
     }
 
     /**
@@ -121,16 +130,26 @@ class AiArticleController(
             description = "指定文章輸出的難度等級（Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
             schema = Schema(implementation = DifficultyLevel::class)
         )
-        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?
+        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?,
+        @Parameter(description = "原文語言碼（預設 en）")
+        @RequestParam(name = "fromLanguage", defaultValue = "en") fromLanguage: String,
+        @Parameter(description = "目標語言碼（預設 zh-TW）")
+        @RequestParam(name = "toLanguage", defaultValue = "zh-TW") toLanguage: String
     ): RandomArticlesResponse {
         val limited = kotlin.math.min(count, 20)
-        val (aiList, total) = aiArticleService.random(limited, source, section, difficulty)
-        val items = aiList.map { aiArticleService.toDetail(it, difficulty) }
+        val (aiList, total) = aiArticleService.random(limited, source, section, difficulty, fromLanguage, toLanguage)
+        val items = aiList.map { aiArticleService.toDetail(it, difficulty, fromLanguage, toLanguage) }
         return RandomArticlesResponse(
             requestedCount = limited,
             actualCount = items.count(),
             totalAvailable = total,
-            filters = RandomArticlesFilters(source = source, section = section, difficulty = difficulty),
+            filters = RandomArticlesFilters(
+                source = source,
+                section = section,
+                difficulty = difficulty,
+                fromLanguage = fromLanguage,
+                toLanguage = toLanguage
+            ),
             articles = items
         )
     }
@@ -177,18 +196,28 @@ class AiArticleController(
             description = "指定文章輸出的難度等級（Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
             schema = Schema(implementation = DifficultyLevel::class)
         )
-        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?
+        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?,
+        @Parameter(description = "原文語言碼（預設 en）")
+        @RequestParam(name = "fromLanguage", defaultValue = "en") fromLanguage: String,
+        @Parameter(description = "目標語言碼（預設 zh-TW）")
+        @RequestParam(name = "toLanguage", defaultValue = "zh-TW") toLanguage: String
     ): RandomWithProcessingResponse {
         val limited = kotlin.math.min(count, 20)
         val (aiList, total, processedCount) =
-            aiArticleService.randomWithRewriteAndProcessing(limited, source, section, difficulty)
-        val items = aiList.map { aiArticleService.toDetail(it, difficulty) }
+            aiArticleService.randomWithRewriteAndProcessing(limited, source, section, difficulty, fromLanguage, toLanguage)
+        val items = aiList.map { aiArticleService.toDetail(it, difficulty, fromLanguage, toLanguage) }
         return RandomWithProcessingResponse(
             requestedCount = limited,
             actualCount = items.count(),
             totalAvailable = total,
             processedCount = processedCount,
-            filters = RandomArticlesFilters(source = source, section = section, difficulty = difficulty),
+            filters = RandomArticlesFilters(
+                source = source,
+                section = section,
+                difficulty = difficulty,
+                fromLanguage = fromLanguage,
+                toLanguage = toLanguage
+            ),
             articles = items
         )
     }
@@ -212,19 +241,36 @@ class AiArticleController(
                 .find { it.article.id == id }
                 ?: return ResponseEntity.notFound().build()
 
-            val contentSummary = aiArticle.difficultyContents.associate { content ->
-                val key = content.difficulty.name
+            val contentSummary = aiArticle.views.associate { view ->
+                val key = "${view.fromLanguage}->${view.toLanguage}:${view.difficulty.name}"
+                val hasExplanation =
+                    view.vocabularyItems.isNotEmpty() ||
+                        view.grammarItems.isNotEmpty() ||
+                        view.sentencePatternItems.isNotEmpty() ||
+                        view.phraseIdiomItems.isNotEmpty() ||
+                        view.comprehensionQuestions.isNotEmpty() ||
+                        !view.legacyExplanationJson.isNullOrBlank()
+
                 key to mapOf(
-                    "hasExplanation" to !content.explanation.isNullOrBlank(),
-                    "cleanedTextLength" to (content.cleanedText?.length ?: 0),
-                    "cleanedTextZhLength" to (content.cleanedTextZh?.length ?: 0)
+                    "difficulty" to view.difficulty.name,
+                    "fromLanguage" to view.fromLanguage,
+                    "toLanguage" to view.toLanguage,
+                    "hasExplanation" to hasExplanation,
+                    "cleanedTextFromLength" to (view.cleanedTextFrom?.length ?: 0),
+                    "cleanedTextToLength" to (view.cleanedTextTo?.length ?: 0)
                 )
             }
 
             val responseBody: Map<String, Any?> = mapOf(
                 "articleId" to id,
                 "titleZh" to aiArticle.titleZh,
-                "availableDifficulties" to contentSummary.keys,
+                "availableViews" to aiArticle.views.map {
+                    mapOf(
+                        "difficulty" to it.difficulty.name,
+                        "fromLanguage" to it.fromLanguage,
+                        "toLanguage" to it.toLanguage
+                    )
+                },
                 "contentSummary" to contentSummary
             )
 
@@ -251,9 +297,14 @@ class AiArticleController(
         summary = "[測試] 重新處理並診斷",
         description = "測試用端點，重新處理文章並回傳詳細診斷信息（僅限非生產環境）"
     )
-    fun reprocessArticleWithDebug(@PathVariable id: Long): ResponseEntity<Map<String, Any?>> {
+    fun reprocessArticleWithDebug(
+        @PathVariable id: Long,
+        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?,
+        @RequestParam(name = "fromLanguage", defaultValue = "en") fromLanguage: String,
+        @RequestParam(name = "toLanguage", defaultValue = "zh-TW") toLanguage: String
+    ): ResponseEntity<Map<String, Any?>> {
         return try {
-            val result = aiArticleService.processAndOverwriteDto(id, null)
+            val result = aiArticleService.processAndOverwriteDto(id, difficulty, fromLanguage, toLanguage)
             val content = result.content
             val explanation = content?.explanation
             val responseBody = buildMap<String, Any?> {
@@ -277,8 +328,10 @@ class AiArticleController(
                 }
                 put("message", "文章已重新處理")
                 put("titleZh", result.titleZh)
-                put("cleanedTextLength", content?.cleanedText?.length ?: 0)
-                put("cleanedTextZhLength", content?.cleanedTextZh?.length ?: 0)
+                put("fromLanguage", result.fromLanguage)
+                put("toLanguage", result.toLanguage)
+                put("cleanedTextFromLength", content?.cleanedTextFrom?.length ?: 0)
+                put("cleanedTextToLength", content?.cleanedTextTo?.length ?: 0)
             }
 
             ResponseEntity.ok(responseBody)
