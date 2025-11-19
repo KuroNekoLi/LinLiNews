@@ -160,7 +160,8 @@ class AiArticleService(
      */
     private fun ArticleAi.applyFrom(
         json: JsonNode,
-        optimizedResult: HtmlOptimizationResult
+        optimizedResult: HtmlOptimizationResult,
+        difficulty: DifficultyLevel
     ): ArticleAi {
         title = json.path("title").asText(null)
         titleZh = json.path("title_zh").asText(null)
@@ -176,7 +177,12 @@ class AiArticleService(
         } else {
             explanation
         }
-        contentNormal = buildDifficultyContentJson(DifficultyLevel.NORMAL, optimizedResult, json)
+        when (difficulty) {
+            DifficultyLevel.EASY -> contentEasy = buildDifficultyContentJson(difficulty, optimizedResult, json)
+            DifficultyLevel.NORMAL -> contentNormal = buildDifficultyContentJson(difficulty, optimizedResult, json)
+            DifficultyLevel.HARD -> contentHard = buildDifficultyContentJson(difficulty, optimizedResult, json)
+            DifficultyLevel.VERY_HARD -> contentVeryHard = buildDifficultyContentJson(difficulty, optimizedResult, json)
+        }
         return this
     }
 
@@ -236,14 +242,15 @@ class AiArticleService(
     fun saveAiResult(
         article: Article,
         json: JsonNode,
-        optimizedResult: HtmlOptimizationResult
+        optimizedResult: HtmlOptimizationResult,
+        difficulty: DifficultyLevel = DifficultyLevel.NORMAL
     ): ArticleAi {
         val startTime = System.currentTimeMillis()
         logger.info("Saving AI result for article ID {}", article.id)
 
         try {
             // 直接插入
-            val entity = ArticleAi(article = article).applyFrom(json, optimizedResult)
+            val entity = ArticleAi(article = article).applyFrom(json, optimizedResult, difficulty)
             val savedEntity = articleAiRepository.save(entity)
             logger.info(
                 "Direct save successful for article ID {} in {}ms",
@@ -258,7 +265,7 @@ class AiArticleService(
             // 查詢+更新
             val existing = articleAiRepository.findByArticle_Id(article.id!!).orElse(
                 ArticleAi(article = article)
-            ).applyFrom(json, optimizedResult)
+            ).applyFrom(json, optimizedResult, difficulty)
 
             val savedEntity = articleAiRepository.save(existing)
             logger.info(
@@ -451,7 +458,8 @@ class AiArticleService(
     fun randomWithRewriteAndProcessing(
         count: Int,
         source: String?,
-        section: String?
+        section: String?,
+        difficulty: DifficultyLevel?
     ): Triple<List<ArticleAi>, Int, Int> {
         // 實現與 randomWithProcessing 類似的邏輯，但包含 AI 重寫和處理
         val allArticles = loadProcessableArticles(source, section)
@@ -498,9 +506,9 @@ class AiArticleService(
                             val combinedResult: JsonNode = try {
                                 val aiStart = System.currentTimeMillis()
 
-                                val difficulty = DifficultyLevel.NORMAL
+                                val difficultyLevel = difficulty ?: DifficultyLevel.NORMAL
                                 val stage1Result =
-                                    aiProcessor.rewriteStage1(difficulty, fullArticle.title, fullArticle.contentHtml!!)
+                                    aiProcessor.rewriteStage1(difficultyLevel, fullArticle.title, fullArticle.contentHtml!!)
                                 logger.info(
                                     "AI rewrite stage 1 completed in {}ms for article ID {} (randomWithRewriteAndProcessing)",
                                     System.currentTimeMillis() - aiStart,
@@ -523,7 +531,11 @@ class AiArticleService(
                                 // rewriteStage1 已經內置重試機制和驗證，所以這裡不需要再額外檢查
                                 // 如果能到這裡，表示 stage1Result 已經通過驗證
 
-                                val stage2Result = aiProcessor.teachingStage2(difficulty, stage1Title, stage1CleanedText)
+                                val stage2Result = aiProcessor.teachingStage2(
+                                    difficultyLevel,
+                                    stage1Title,
+                                    stage1CleanedText
+                                )
                                 logger.info(
                                     "AI teaching stage 2 completed in {}ms for article ID {} (randomWithRewriteAndProcessing)",
                                     System.currentTimeMillis() - aiStart,
@@ -590,7 +602,7 @@ class AiArticleService(
 
                             // 5. 寫入：透過 Semaphore 確保同一時間只有一個寫入
                             writeSemaphore.withPermit {
-                                saveAiResult(fullArticle, combinedResult, optimizedResult)
+                                saveAiResult(fullArticle, combinedResult, optimizedResult, difficultyLevel)
                             }
                         }
 

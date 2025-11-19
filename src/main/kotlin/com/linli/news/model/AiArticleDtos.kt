@@ -153,3 +153,31 @@ data class McqOptions @JsonCreator constructor(
     @field:JsonProperty("C") @get:JsonProperty("C") @param:JsonProperty("C") @field:Schema(description = "選項 C（英文）") val C: String? = null,
     @field:JsonProperty("D") @get:JsonProperty("D") @param:JsonProperty("D") @field:Schema(description = "選項 D（英文）") val D: String? = null
 )
+
+@Schema(name = "RandomArticlesFilters", description = "隨機文章查詢的過濾條件")
+data class RandomArticlesFilters(
+    @field:Schema(description = "來源過濾，例如 BBC、CNN") val source: String?,
+    @field:Schema(description = "區塊過濾，例如 news、world、technology") val section: String?,
+    @field:Schema(description = "指定 AI 輸出的難度等級") val difficulty: DifficultyLevel?
+)
+
+@Schema(name = "RandomArticlesResponse", description = "隨機取得 AI 文章的回應")
+data class RandomArticlesResponse(
+    @field:Schema(description = "訊息，預設為 success") val message: String = "success",
+    @field:Schema(description = "請求的文章數") val requestedCount: Int,
+    @field:Schema(description = "實際回傳的文章數") val actualCount: Int,
+    @field:Schema(description = "資料庫內可用的總筆數") val totalAvailable: Int,
+    @field:Schema(description = "使用的過濾條件") val filters: RandomArticlesFilters,
+    @field:Schema(description = "文章清單") val articles: List<AiArticleDetail>
+)
+
+@Schema(name = "RandomWithProcessingResponse", description = "隨機抽取並自動 AI 處理的回應")
+data class RandomWithProcessingResponse(
+    @field:Schema(description = "訊息，預設為 success") val message: String = "success",
+    @field:Schema(description = "請求的文章數") val requestedCount: Int,
+    @field:Schema(description = "實際回傳的文章數") val actualCount: Int,
+    @field:Schema(description = "資料庫內可用的總筆數") val totalAvailable: Int,
+    @field:Schema(description = "此次實際執行 AI 處理的文章數") val processedCount: Int,
+    @field:Schema(description = "使用的過濾條件") val filters: RandomArticlesFilters,
+    @field:Schema(description = "文章清單") val articles: List<AiArticleDetail>
+)

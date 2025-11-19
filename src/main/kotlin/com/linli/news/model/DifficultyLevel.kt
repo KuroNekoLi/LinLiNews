@@ -8,6 +8,10 @@ package com.linli.news.model
  * @property minWords 建議最少英文單字數
  * @property maxWords 建議最多英文單字數，若無上限則為 null
  */
+@io.swagger.v3.oas.annotations.media.Schema(
+    description = "AI 產出的文章難度等級，對應 CEFR 分級",
+    example = "NORMAL"
+)
 enum class DifficultyLevel(
     val label: String,
     val cefrCode: String,

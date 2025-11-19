@@ -7,10 +7,14 @@ import com.linli.news.model.AiArticleDetail
 import com.linli.news.model.DifficultyContent
 import com.linli.news.model.DifficultyLevel
 import com.linli.news.model.Explanation
+import com.linli.news.model.RandomArticlesFilters
+import com.linli.news.model.RandomArticlesResponse
+import com.linli.news.model.RandomWithProcessingResponse
 import com.linli.news.service.AiArticleService
 import io.swagger.v3.oas.annotations.Hidden
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Profile
@@ -92,17 +96,16 @@ class AiArticleController(
         @RequestParam(name = "source", required = false) source: String?,
         @Parameter(description = "區塊過濾，例如 news、world、technology")
         @RequestParam(name = "section", required = false) section: String?
-    ): Map<String, Any> {
+    ): RandomArticlesResponse {
         val limited = kotlin.math.min(count, 20)
         val (aiList, total) = aiArticleService.random(limited, source, section)
         val items = aiList.map { toDto(it) }
-        return mapOf(
-            "message" to "success",
-            "requestedCount" to limited,
-            "actualCount" to items.count(),
-            "totalAvailable" to total,
-            "filters" to mapOf("source" to source, "section" to section),
-            "articles" to items
+        return RandomArticlesResponse(
+            requestedCount = limited,
+            actualCount = items.count(),
+            totalAvailable = total,
+            filters = RandomArticlesFilters(source = source, section = section, difficulty = null),
+            articles = items
         )
     }
 
@@ -119,7 +122,7 @@ class AiArticleController(
     @GetMapping("/random-with-processing")
     @Operation(
         summary = "隨機取得 n 篇文章並自動進行 AI 處理",
-        description = "從資料庫隨機抽取文章，若尚未經 AI 處理則自動處理並儲存。可選擇以來源/區塊過濾。"
+        description = "從資料庫隨機抽取文章，若尚未經 AI 處理則自動處理並儲存。可選擇以來源/區塊過濾，並可指定 AI 輸出的難度等級。"
     )
     fun randomWithProcessing(
         @Parameter(description = "文章數量（最多 20）")
@@ -127,19 +130,24 @@ class AiArticleController(
         @Parameter(description = "來源過濾，例如 BBC、CNN")
         @RequestParam(name = "source", required = false) source: String?,
         @Parameter(description = "區塊過濾，例如 news、world、technology")
-        @RequestParam(name = "section", required = false) section: String?
-    ): Map<String, Any> {
+        @RequestParam(name = "section", required = false) section: String?,
+        @Parameter(
+            description = "指定文章輸出的難度等級（Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
+            schema = Schema(implementation = DifficultyLevel::class)
+        )
+        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?
+    ): RandomWithProcessingResponse {
         val limited = kotlin.math.min(count, 20)
-        val (aiList, total, processedCount) = aiArticleService.randomWithRewriteAndProcessing(limited, source, section)
+        val (aiList, total, processedCount) =
+            aiArticleService.randomWithRewriteAndProcessing(limited, source, section, difficulty)
         val items = aiList.map { toDto(it) }
-        return mapOf(
-            "message" to "success",
-            "requestedCount" to limited,
-            "actualCount" to items.count(),
-            "totalAvailable" to total,
-            "processedCount" to processedCount,
-            "filters" to mapOf("source" to source, "section" to section),
-            "articles" to items
+        return RandomWithProcessingResponse(
+            requestedCount = limited,
+            actualCount = items.count(),
+            totalAvailable = total,
+            processedCount = processedCount,
+            filters = RandomArticlesFilters(source = source, section = section, difficulty = difficulty),
+            articles = items
         )
     }
 
