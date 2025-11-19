@@ -86,7 +86,7 @@ class AiArticleControllerTest {
     @Test
     fun `GET ai-articles random-with-processing should return 200 with processing stats`() {
         val list = listOf(sampleArticleAi(1))
-        every { aiArticleService.randomWithProcessing(1, null, null) } returns Triple(list, 10, 1)
+        every { aiArticleService.randomWithRewriteAndProcessing(1, null, null) } returns Triple(list, 10, 1)
 
         mockMvc.get("/api/ai-articles/random-with-processing?count=1")
             .andExpect {

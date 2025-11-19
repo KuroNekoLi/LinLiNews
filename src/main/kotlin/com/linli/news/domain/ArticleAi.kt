@@ -11,14 +11,12 @@ import java.time.OffsetDateTime
  * @property article 關聯的原始文章（一對一）
  * @property title 文章標題（AI 可能的調整版本）
  * @property titleZh 中文標題（AI 翻譯）
- * @property optimizedHtml 最佳化後的英文 HTML 內容
- * @property optimizedZhHtml 最佳化後的繁體中文 HTML 內容
- * @property cleanedText 清理後的純文字內容（英文）
- * @property cleanedTextZh 清理後的純文字內容（繁體中文翻譯）
  * @property summaryEn AI 產生的英文摘要
  * @property summaryZh AI 產生的中文摘要
- * @property explanation 教學解說（JSON 格式，包含單字、文法、句型等）
- * @property wordCount 文章字數
+ * @property contentEasy B1 難度的重寫內容（JSON 格式）
+ * @property contentNormal B2 難度的重寫內容（JSON 格式）
+ * @property contentHard C1 難度的重寫內容（JSON 格式）
+ * @property contentVeryHard C2 難度的重寫內容（JSON 格式）
  * @property id AI 文章唯一識別碼
  * @property createdAt 建立時間
  * @property updatedAt 更新時間
@@ -71,9 +69,21 @@ class ArticleAi(
     @Column(name = "explanation", columnDefinition = "JSON")
     var explanation: String? = null,
 
-    /** 文章字數 */
-    @Column(name = "word_count")
-    var wordCount: Int = 0
+    /** B1 難度的重寫內容（JSON 格式） */
+    @Column(name = "content_easy", columnDefinition = "JSON")
+    var contentEasy: String? = null,
+
+    /** B2 難度的重寫內容（JSON 格式） */
+    @Column(name = "content_normal", columnDefinition = "JSON")
+    var contentNormal: String? = null,
+
+    /** C1 難度的重寫內容（JSON 格式） */
+    @Column(name = "content_hard", columnDefinition = "JSON")
+    var contentHard: String? = null,
+
+    /** C2 難度的重寫內容（JSON 格式） */
+    @Column(name = "content_very_hard", columnDefinition = "JSON")
+    var contentVeryHard: String? = null
 ) {
     /** AI 文章唯一識別碼（自動遞增） */
     @Id

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.linli.news.domain.ArticleAi
 import com.linli.news.model.AiArticleDetail
+import com.linli.news.model.DifficultyContent
+import com.linli.news.model.DifficultyLevel
 import com.linli.news.model.Explanation
 import com.linli.news.service.AiArticleService
 import io.swagger.v3.oas.annotations.Hidden
@@ -120,43 +122,6 @@ class AiArticleController(
         description = "從資料庫隨機抽取文章，若尚未經 AI 處理則自動處理並儲存。可選擇以來源/區塊過濾。"
     )
     fun randomWithProcessing(
-        @Parameter(description = "文章數量（最多 20）")
-        @RequestParam(name = "count", defaultValue = "5") count: Int,
-        @Parameter(description = "來源過濾，例如 BBC、CNN")
-        @RequestParam(name = "source", required = false) source: String?,
-        @Parameter(description = "區塊過濾，例如 news、world、technology")
-        @RequestParam(name = "section", required = false) section: String?
-    ): Map<String, Any> {
-        val limited = kotlin.math.min(count, 20)
-        val (aiList, total, processedCount) = aiArticleService.randomWithProcessing(limited, source, section)
-        val items = aiList.map { toDto(it) }
-        return mapOf(
-            "message" to "success",
-            "requestedCount" to limited,
-            "actualCount" to items.count(),
-            "totalAvailable" to total,
-            "processedCount" to processedCount,
-            "filters" to mapOf("source" to source, "section" to section),
-            "articles" to items
-        )
-    }
-
-    /**
-     * 隨機取得 n 篇文章並自動進行 AI 處理與重寫
-     *
-     * 若文章尚未經 AI 處理，會自動進行處理並儲存
-     *
-     * @param count 文章數量（最多 20）
-     * @param source 來源過濾，例如 BBC、CNN
-     * @param section 區塊過濾，例如 news、world、technology
-     * @return 隨機 AI 文章清單與統計資訊
-     */
-    @GetMapping("/random-with-rewrite-processing")
-    @Operation(
-        summary = "隨機取得 n 篇文章並自動進行 AI 處理與重寫",
-        description = "從資料庫隨機抽取文章，若尚未經 AI 處理則自動處理並儲存。可選擇以來源/區塊過濾。"
-    )
-    fun randomWithRewriteProcessing(
         @Parameter(description = "文章數量（最多 20）")
         @RequestParam(name = "count", defaultValue = "5") count: Int,
         @Parameter(description = "來源過濾，例如 BBC、CNN")
@@ -324,16 +289,10 @@ class AiArticleController(
     private fun toDto(ai: ArticleAi): AiArticleDetail {
         val a = ai.article
         val articleId = requireNotNull(a.id) { "Article must have an ID" }
-        val explanationObj: Explanation? = ai.explanation?.let { explanationJson ->
-            try {
-                val parsed = objectMapper.readValue(explanationJson, Explanation::class.java)
-                parsed
-            } catch (e: Exception) {
-                // 記錄解析失敗，但返回 null 而不是空對象
-                logger.error("Failed to parse explanation in controller for article ${ai.article.id}: ${e.message}")
-                null
-            }
-        }
+        val easyContent = parseDifficultyContent(ai.contentEasy, DifficultyLevel.EASY)
+        val normalContent = parseDifficultyContent(ai.contentNormal, DifficultyLevel.NORMAL)
+        val hardContent = parseDifficultyContent(ai.contentHard, DifficultyLevel.HARD)
+        val veryHardContent = parseDifficultyContent(ai.contentVeryHard, DifficultyLevel.VERY_HARD)
 
         return AiArticleDetail(
             id = articleId,
@@ -342,15 +301,41 @@ class AiArticleController(
             title = a.title,
             publishedAt = a.publishedAt?.toString(),
             originalUrl = a.originalUrl,
-            contentHtml = a.contentHtml,
-            optimizedHtml = ai.optimizedHtml,
-            optimizedZhHtml = ai.optimizedZhHtml,
+            contentHtml = normalContent?.optimizedHtml ?: a.contentHtml,
             titleZh = ai.titleZh,
             summaryEn = ai.summaryEn,
             summaryZh = ai.summaryZh,
-            cleanedText = ai.cleanedText,
-            cleanedTextZh = ai.cleanedTextZh,
-            explanation = explanationObj
+            easy = easyContent,
+            normal = normalContent,
+            hard = hardContent,
+            veryHard = veryHardContent
         )
+    }
+
+    /**
+     * 解析難度內容 JSON。 
+     */
+    private fun parseDifficultyContent(json: String?, fallback: DifficultyLevel): DifficultyContent? {
+        if (json.isNullOrBlank()) return null
+        return try {
+            val node = objectMapper.readTree(json)
+            val difficultyName = node.path("difficulty").asText(fallback.name)
+            val difficulty = runCatching { DifficultyLevel.valueOf(difficultyName) }.getOrDefault(fallback)
+            val explanationNode = node.path("explanation")
+            val explanation = if (!explanationNode.isMissingNode && !explanationNode.isNull) {
+                objectMapper.readValue(explanationNode.toString(), Explanation::class.java)
+            } else null
+            DifficultyContent(
+                difficulty = difficulty,
+                optimizedHtml = node.path("optimized_html").asText(null),
+                optimizedZhHtml = node.path("optimized_zh_html").asText(null),
+                cleanedText = node.path("cleaned_text").asText(null),
+                cleanedTextZh = node.path("cleaned_text_zh").asText(null),
+                explanation = explanation
+            )
+        } catch (e: Exception) {
+            logger.error("Failed to parse difficulty content JSON: ${e.message}")
+            null
+        }
     }
 }

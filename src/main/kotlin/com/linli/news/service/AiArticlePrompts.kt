@@ -1,5 +1,7 @@
 package com.linli.news.service
 
+import com.linli.news.model.DifficultyLevel
+
 /**
  * AI 文章處理的 Prompt 產生器。
  *
@@ -234,61 +236,64 @@ ${EXPLANATION_JSON_SCHEMA.prependIndent("          ")}
     """.trimIndent()
 
     /**
-     * Stage 1 Rewrite System Prompt.
+     * Stage 1 Rewrite System Prompt，依照難度調整篇幅與語域。
      */
-    fun rewriteStage1SystemPrompt(): String = """
-        你是專業的英文新聞重寫助手。
-        任務：
-        1) 先重寫提供的英文文章正文，產出一篇 **介於 400 至 600 個英文單字（English words）的托福難度英文短文**。
-           - 我會在伺服器端重新計算 cleaned_text 的實際英文單字數，若不在 400–600 之間就視為失敗。
-           - 因此你必須增加足夠細節、例子與解釋，確保實際單字數落在 400–600 之間，請勿隨意估計 word_count。
-        2) 將重寫後的英文正文翻譯為繁體中文（保留專有名詞、時間、地點與數字，避免故意誤譯）。
-        3) 英文正文建議拆成 **6–8 個自然段**，每段 **3–5 句**。
-           - 每句可稍微寫長一點（約 20–30 個英文單字），以便達到總字數要求。
-           - 每個段落都必須用 <p> 標籤包裹。
-        4) 中文正文的段落結構必須與英文正文一一對應。
-        5) 為重寫後的文章創作適當的英文標題。
-        6) HTML 結構必須遵守以下規則：
-${HTML_STRUCTURE_RULES.prependIndent("           ")}
+    fun rewriteStage1SystemPrompt(difficulty: DifficultyLevel): String {
+        val difficultyInstruction = difficultyWritingInstruction(difficulty)
+        return """
+        你是專業的英文新聞重寫助手，需根據指定難度輸出。
+        難度設定：${difficulty.label}（${difficulty.cefrCode}）
+        $difficultyInstruction
+        通用要求：
+        - 保留原始 HTML 中的所有 <img> 標籤與對應的 caption，不得移除圖片；如需可微調 alt 文字。
+        - 中文與英文版本的段落結構需一一對應。
+        - HTML 結構必須遵守以下規則：
+${HTML_STRUCTURE_RULES.prependIndent("          ")}
         僅輸出 JSON 物件，不要多餘文字。
-    """.trimIndent()
+        """.trimIndent()
+    }
 
     /**
-     * Stage 1 Rewrite User Prompt.
+     * Stage 1 Rewrite User Prompt，包含保留圖片的指示。
      */
-    fun rewriteStage1UserPrompt(title: String?, originalHtml: String): String = """
-        請重寫下列文章，將其重寫為 **400~600 個英文單字** 的托福難度文章，並確保至少 4 個段落，每段 2–4 句：
+    fun rewriteStage1UserPrompt(difficulty: DifficultyLevel, title: String?, originalHtml: String): String {
+        val difficultyInstruction = difficultyWritingInstruction(difficulty)
+        val wordRangeHint = difficultyWordRangeHint(difficulty)
+        return """
+        請依照 ${difficulty.label}（${difficulty.cefrCode}）難度重寫下列文章：
         標題：${title ?: "(no title)"}
         原始HTML：```html
         $originalHtml
         ```
-        
+
         請以 JSON 物件回覆，鍵名固定如下（使用英文 key，所有中文請一律使用「繁體中文」）：
         {
           "optimized_html": string,
           "optimized_zh_html": string,
           "title": string,
           "cleaned_text": string,
-          "cleaned_text_zh": string,
-          "word_count": number             // 英文正文的單字數
+          "cleaned_text_zh": string
         }
-        
-        重要要求：
-        1. 重寫的文章長度必須控制在 400~600 個英文單字之間，托福難度。
-        2. 文章段落必須至少 4 段，且每段都用 <p> 標籤包裹。
-        3. 每段文字必須含 2-4 個句子，確保文章結構良好。
-        4. HTML 結構必須簡潔且語意化，遵守上述 HTML 規則。
-        5. 提供重寫後文章的適當英文標題。
+
+        難度與篇幅要求：$wordRangeHint
+        $difficultyInstruction
+        其他限制：
+        1. 文章段落必須至少 4 段，每段使用 <p> 包裹並包含 2–4 句。
+        2. 必須保留原始 HTML 內所有圖片相關元素（figure、img、figcaption），位置盡量對應。
+        3. 產出英文標題並維持正式、精確的語氣。
     """.trimIndent()
+    }
 
     /**
-     * Stage 2 Teaching System Prompt.
+     * Stage 2 Teaching System Prompt，根據難度設定解說深度。
      */
-    fun teachingStage2SystemPrompt(): String = """
-        你是專業的英文新聞教學助手。
+    fun teachingStage2SystemPrompt(difficulty: DifficultyLevel): String {
+        val explanationTask = explanationTaskDescription(difficulty)
+        return """
+        你是專業的英文新聞教學助手，需依 ${difficulty.label}（${difficulty.cefrCode}）難度撰寫教學。
         任務：
         1) 以「英文教學者」身份，撰寫詳盡講解：
-${EXPLANATION_TASK_DESCRIPTION.prependIndent("           ")}
+$explanationTask
         2) 請針對重寫後的文章提供適當的英文標題 (title) 與其繁體中文翻譯 (title_zh)，
            - 英文標題可根據內容創作，不一定使用原標題；
            - 中文標題需忠實翻譯英文標題。
@@ -299,17 +304,20 @@ ${EXPLANATION_TASK_DESCRIPTION.prependIndent("           ")}
 ${HTML_STRUCTURE_RULES.prependIndent("           ")}
         僅輸出 JSON 物件，不要多餘文字。
     """.trimIndent()
+    }
 
     /**
      * Stage 2 Teaching User Prompt.
      */
-    fun teachingStage2UserPrompt(title: String, rewrittenText: String): String = """
-        請教學下列重寫後的文章：
+    fun teachingStage2UserPrompt(difficulty: DifficultyLevel, title: String, rewrittenText: String): String {
+        val explanationTask = explanationTaskDescription(difficulty)
+        return """
+        請依 ${difficulty.label}（${difficulty.cefrCode}）難度教學下列重寫後的文章：
         標題：$title
         重寫後的英文內文：```text
         $rewrittenText
         ```
-        
+
         請以 JSON 物件回覆，鍵名固定如下（使用英文 key，所有中文請一律使用「繁體中文」）：
         {
           "title": string,              // 可以使用原標題或為內容創作更適合的新標題
@@ -318,10 +326,66 @@ ${HTML_STRUCTURE_RULES.prependIndent("           ")}
           "summary_zh": string,         // 繁體中文摘要（條列式，至少 3 點）
 ${EXPLANATION_JSON_SCHEMA.prependIndent("          ")}
         }
-        
+
+        難度提示：
+        $explanationTask
         重要要求：
         1. 教學內容必須簡潔且語意化，遵守上述 HTML 規則。
         2. 確保提供雙語標題（title 與 title_zh）。
         3. 確保提供英文與繁體中文摘要，各至少 3 點，使用條列式列出。
     """.trimIndent()
+    }
+
+    /**
+     * 依難度提供寫作指引文字。
+     */
+    private fun difficultyWritingInstruction(difficulty: DifficultyLevel): String = when (difficulty) {
+        DifficultyLevel.EASY -> """
+            - 使用 B1 層級（Easy），篇幅約 300–600 字。
+            - 採用日常熟悉但具深度的語彙與句型，可描述經驗、事件或計畫。
+            - 結構清晰（引言→主體→結論），語氣中等正式，避免過度專業術語。
+        """.trimIndent()
+
+        DifficultyLevel.NORMAL -> """
+            - 使用 B2 層級（Normal），篇幅約 600–900 字。
+            - 能比較多個觀點並討論優缺點，句型中等複雜且連貫。
+            - 保持中等正式語氣，適合通用學術或職場讀者。
+        """.trimIndent()
+
+        DifficultyLevel.HARD -> """
+            - 使用 C1 層級（Hard），篇幅約 900–1,200 字。
+            - 針對複雜主題深入分析，提出觀點並以例證支持。
+            - 句型多樣、詞彙高階且明晰，風格專業但保持可讀性。
+        """.trimIndent()
+
+        DifficultyLevel.VERY_HARD -> """
+            - 使用 C2 層級（VeryHard），篇幅至少 1,200 字。
+            - 語言流暢成熟，可解釋複雜概念並辨識細微意涵，加入文化或背景知識。
+            - 風格正式、批判性或分析性皆可，但避免簡化或重複字詞。
+        """.trimIndent()
+    }
+
+    /**
+     * 依難度產生篇幅提示文字。
+     */
+    private fun difficultyWordRangeHint(difficulty: DifficultyLevel): String = when (difficulty) {
+        DifficultyLevel.EASY -> "300–600 個英文單字"
+        DifficultyLevel.NORMAL -> "600–900 個英文單字"
+        DifficultyLevel.HARD -> "900–1,200 個英文單字"
+        DifficultyLevel.VERY_HARD -> "至少 1,200 個英文單字"
+    }
+
+    /**
+     * 依難度調整教學解析的說明文字。
+     */
+    private fun explanationTaskDescription(difficulty: DifficultyLevel): String {
+        val base = EXPLANATION_TASK_DESCRIPTION
+        val addon = when (difficulty) {
+            DifficultyLevel.EASY -> "- 讀者為中階學習者，解說需貼近生活情境並給予具體例子。"
+            DifficultyLevel.NORMAL -> "- 讀者具 B2 能力，可加入比較觀點或常見錯誤提示。"
+            DifficultyLevel.HARD -> "- 讀者具 C1 能力，鼓勵使用轉折語、比喻並點出隱含意涵。"
+            DifficultyLevel.VERY_HARD -> "- 讀者為專業人士或母語者，解說可批判性、分析性並使用專業術語。"
+        }
+        return base + "\n        " + addon
+    }
 }

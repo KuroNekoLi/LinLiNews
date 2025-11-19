@@ -3,11 +3,12 @@ package com.linli.news.model
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonCreator
-import io.swagger.v3.oas.annotations.media.Schema
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import com.fasterxml.jackson.databind.annotation.JsonSerialize
 import com.fasterxml.jackson.annotation.JsonAutoDetect
 import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility
+import com.linli.news.model.DifficultyLevel
+import io.swagger.v3.oas.annotations.media.Schema
 
 @Schema(name = "AiArticleDetail", description = "統一的文章資料物件（含 AI 欄位）")
 data class AiArticleDetail(
@@ -25,12 +26,6 @@ data class AiArticleDetail(
     val originalUrl: String,
     @field:Schema(description = "完整 HTML 內容（原始）")
     val contentHtml: String?,
-    @field:JsonProperty("optimized_zh_html")
-    @field:Schema(description = "AI 產生的繁體中文 HTML 內容")
-    val optimizedZhHtml: String?,
-    @field:JsonProperty("optimized_html")
-    @field:Schema(description = "AI 產生的英文 HTML 內容")
-    val optimizedHtml: String?,
 
     // AI 產出欄位
     @field:JsonProperty("title_zh")
@@ -45,15 +40,41 @@ data class AiArticleDetail(
     @Schema(description = "AI 產生的中文摘要")
     val summaryZh: String?,
 
+    @field:JsonProperty("easy")
+    @Schema(description = "B1 難度（Easy）版本的內容")
+    val easy: DifficultyContent?,
+
+    @field:JsonProperty("normal")
+    @Schema(description = "B2 難度（Normal）版本的內容")
+    val normal: DifficultyContent?,
+
+    @field:JsonProperty("hard")
+    @Schema(description = "C1 難度（Hard）版本的內容")
+    val hard: DifficultyContent?,
+
+    @field:JsonProperty("very_hard")
+    @Schema(description = "C2 難度（VeryHard）版本的內容")
+    val veryHard: DifficultyContent?
+)
+
+@Schema(name = "DifficultyContent", description = "依照難度分級的文章內容與解析")
+data class DifficultyContent(
+    @field:JsonProperty("difficulty")
+    @Schema(description = "對應的難度等級")
+    val difficulty: DifficultyLevel,
+    @field:JsonProperty("optimized_html")
+    @Schema(description = "重寫後的英文 HTML 內容")
+    val optimizedHtml: String?,
+    @field:JsonProperty("optimized_zh_html")
+    @Schema(description = "重寫後的繁體中文 HTML 內容")
+    val optimizedZhHtml: String?,
     @field:JsonProperty("cleaned_text")
-    @Schema(description = "AI 清理後的英文純文字")
+    @Schema(description = "重寫後的英文純文字")
     val cleanedText: String?,
-
     @field:JsonProperty("cleaned_text_zh")
-    @Schema(description = "AI 翻譯後的中文純文字，良好分段（以空行分段）")
+    @Schema(description = "重寫後的中文純文字")
     val cleanedTextZh: String?,
-
-    @field:Schema(description = "AI 教學解說物件")
+    @field:Schema(description = "教學解說物件")
     val explanation: Explanation?
 )
 

@@ -2,6 +2,7 @@ package com.linli.news.service
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.linli.news.model.DifficultyLevel
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.MediaType
@@ -232,7 +233,7 @@ class AiArticleProcessorService(
      * @param originalHtml 原始HTML內容
      * @return 重寫後的結果，包含優化後的HTML、清理後的文本等
      */
-    fun rewriteStage1(title: String?, originalHtml: String): JsonNode {
+    fun rewriteStage1(difficulty: DifficultyLevel, title: String?, originalHtml: String): JsonNode {
         require(apiKey.isNotBlank()) { "OPENAI_API_KEY / openai.api-key is required" }
         if (originalHtml.isBlank()) {
             throw IllegalArgumentException("Article HTML content is empty; cannot process with AI")
@@ -252,8 +253,8 @@ class AiArticleProcessorService(
                     |
                 """.trimMargin()
 
-                val systemPrompt = AiArticlePrompts.rewriteStage1SystemPrompt()
-                val userPrompt = AiArticlePrompts.rewriteStage1UserPrompt(title, originalHtml) + additionalInstructions
+                val systemPrompt = AiArticlePrompts.rewriteStage1SystemPrompt(difficulty)
+                val userPrompt = AiArticlePrompts.rewriteStage1UserPrompt(difficulty, title, originalHtml) + additionalInstructions
 
                 val body = buildJsonModeBody(
                     systemPrompt = systemPrompt,
@@ -286,12 +287,10 @@ class AiArticleProcessorService(
                 lastResult = result
                 val cleanedText = result.path("cleaned_text").asText("")
                 lastWordCount = countEnglishWords(cleanedText)
-                val aiReportedCount = result.path("word_count").asInt(-1)
-
                 // 驗證字數和段落
-                logger.info("[AI] Validating rewriteStage1 result: wordCount=$lastWordCount, aiReported=$aiReportedCount")
-                if (!validateRewriteAndProcessResult(result)) {
-                    logger.warn("[AI] rewriteStage1 attempt ${attempt + 1}/$maxAttempts failed validation: wordCount=$lastWordCount (not in 400-600 range) or not enough paragraphs")
+                logger.info("[AI] Validating rewriteStage1 result: wordCount=$lastWordCount, difficulty=${difficulty.label}")
+                if (!validateRewriteAndProcessResult(result, difficulty)) {
+                    logger.warn("[AI] rewriteStage1 attempt ${attempt + 1}/$maxAttempts failed validation for ${difficulty.label}: wordCount=$lastWordCount or not enough paragraphs")
                     // 如果不是最後一次嘗試，則繼續下一次
                     if (attempt < maxAttempts - 1) {
                         continue
@@ -321,7 +320,7 @@ class AiArticleProcessorService(
 
         // 如果到達這裡，表示所有嘗試都失敗了
         throw lastException
-            ?: IllegalStateException("rewriteStage1 無法在 $maxAttempts 次內達到 400–600 字（最後一次 $lastWordCount 字）")
+            ?: IllegalStateException("rewriteStage1 無法在 $maxAttempts 次內達到 ${difficulty.label} 字數要求（最後一次 $lastWordCount 字）")
     }
 
     /**
@@ -331,14 +330,14 @@ class AiArticleProcessorService(
      * @param rewrittenText 重寫後的文本
      * @return 教學解析結果，包含字彙、文法、題目等
      */
-    fun teachingStage2(title: String?, rewrittenText: String): JsonNode {
+    fun teachingStage2(difficulty: DifficultyLevel, title: String?, rewrittenText: String): JsonNode {
         require(apiKey.isNotBlank()) { "OPENAI_API_KEY / openai.api-key is required" }
         if (rewrittenText.isBlank()) {
             throw IllegalArgumentException("Rewritten text is empty; cannot generate teaching materials")
         }
 
-        val systemPrompt = AiArticlePrompts.teachingStage2SystemPrompt()
-        val userPrompt = AiArticlePrompts.teachingStage2UserPrompt(title ?: "(no title)", rewrittenText)
+        val systemPrompt = AiArticlePrompts.teachingStage2SystemPrompt(difficulty)
+        val userPrompt = AiArticlePrompts.teachingStage2UserPrompt(difficulty, title ?: "(no title)", rewrittenText)
 
         val body = buildJsonModeBody(
             systemPrompt = systemPrompt,
@@ -479,21 +478,19 @@ class AiArticleProcessorService(
      * @param result AI 回應的 JSON 結果
      * @return true 如果結果有效，否則 false
      */
-    private fun validateRewriteAndProcessResult(result: JsonNode): Boolean {
+    private fun validateRewriteAndProcessResult(result: JsonNode, difficulty: DifficultyLevel): Boolean {
         try {
             // 1. 檢查字數
             val cleanedText = result.path("cleaned_text").asText("")
-            val aiReported = result.path("word_count").asInt(-1)
-            if (aiReported > 0) {
-                logger.debug("[AI] AI reported word count: $aiReported")
-            }
             val wordCount = countEnglishWords(cleanedText)
             logger.debug("[AI] Calculated word count from cleaned_text: $wordCount")
-            logger.info("[AI] Validating word count: $wordCount (expected range: 400-600)")
+            val minWords = difficulty.minWords
+            val maxWords = difficulty.maxWords
+            logger.info("[AI] Validating word count: $wordCount (expected: ${maxWords?.let { "$minWords-$it" } ?: "$minWords+"})")
 
-            val validWordCount = wordCount in 400..600
+            val validWordCount = if (maxWords != null) wordCount in minWords..maxWords else wordCount >= minWords
             if (!validWordCount) {
-                logger.warn("[AI] Article word count = $wordCount, not in required range 400..600 (AI reported: $aiReported)")
+                logger.warn("[AI] Article word count = $wordCount, not in required range for ${difficulty.label}")
                 return false
             }
 
