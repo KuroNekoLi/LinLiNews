@@ -198,13 +198,15 @@ class AiArticleController(
     fun reprocessArticleWithDebug(@PathVariable id: Long): ResponseEntity<Map<String, Any>> {
         return try {
             val result = aiArticleService.processAndOverwriteDto(id)
+            val preferredContent = pickPreferredContent(result)
+            val explanation = preferredContent?.explanation
             ResponseEntity.ok(
                 mapOf(
                     "success" to true,
                     "articleId" to id,
-                    "hasExplanation" to (result.explanation != null),
-                    "explanationFields" to if (result.explanation != null) {
-                        val exp = result.explanation
+                    "hasExplanation" to (explanation != null),
+                    "explanationFields" to if (explanation != null) {
+                        val exp = explanation
                         mapOf(
                             "hasVocabulary" to (exp.vocabulary?.isNotEmpty() == true),
                             "hasGrammar" to (exp.grammar?.isNotEmpty() == true),
@@ -218,8 +220,8 @@ class AiArticleController(
                     } else null,
                     "message" to "文章已重新處理",
                     "titleZh" to result.titleZh,
-                    "cleanedTextLength" to (result.cleanedText?.length ?: 0),
-                    "cleanedTextZhLength" to (result.cleanedTextZh?.length ?: 0)
+                    "cleanedTextLength" to (preferredContent?.cleanedText?.length ?: 0),
+                    "cleanedTextZhLength" to (preferredContent?.cleanedTextZh?.length ?: 0)
                 ) as Map<String, Any>
             )
         } catch (e: Exception) {
@@ -232,6 +234,15 @@ class AiArticleController(
                 ) as Map<String, Any>
             )
         }
+    }
+
+    /**
+     * 依難度優先順序選擇最適合用於診斷的重寫內容。
+     *
+     * 優先順序：Normal → Hard → VeryHard → Easy。
+     */
+    private fun pickPreferredContent(detail: AiArticleDetail): DifficultyContent? {
+        return detail.normal ?: detail.hard ?: detail.veryHard ?: detail.easy
     }
 
     /**
