@@ -179,63 +179,6 @@ ${HTML_STRUCTURE_RULES.prependIndent("       ")}
     """.trimIndent()
 
     /**
-     * 完全重寫 rewriteAndProcessSystemPrompt，按照可用的所有規則輸出。
-     */
-    fun rewriteAndProcessSystemPrompt(): String = """
-        你是專業的英文新聞教學助手。
-        任務：
-        1) 先重寫提供的英文文章正文，產出一篇 **介於 400 至 600 個英文單字（English words）的托福難度英文短文**。
-           - 只計算英文正文的單字數，不包含標題、摘要與教學解析。
-           - 如果字數少於 400 或多於 600，你必須自行修改與補充內容，直到介於 400~600 單字之間。
-        2) 將重寫後的英文正文翻譯為繁體中文（保留專有名詞、時間、地點與數字，避免故意誤譯）。
-        3) 以「英文教學者」身份，撰寫詳盡講解：
-${EXPLANATION_TASK_DESCRIPTION.prependIndent("           ")}
-        4) 產生雙語摘要與標題。
-        5) HTML 結構必須遵守以下規則：
-${HTML_STRUCTURE_RULES.prependIndent("           ")}
-        6) 分段與 HTML 要求：
-           - 英文正文必須拆成至少 4 個自然段，每段 2–4 句。
-           - 使用 <p> 標籤包裹每一段落，不得將全文包在單一 <p> 之中。
-           - 中文正文的段落結構必須與英文正文一一對應。
-        7) 所有長度與分段要求為最高優先順序，若與其他要求衝突，以長度與分段要求為主。
-
-        僅輸出 JSON 物件，不要多餘文字。
-    """.trimIndent()
-
-    /**
-     * 完全重寫 rewriteAndProcessUserPrompt，按照最新規則精確指定所有內容。
-     */
-    fun rewriteAndProcessUserPrompt(title: String?, originalHtml: String): String = """
-        請處理下列文章，將其重寫為 **400~600 個英文單字** 的托福難度文章，並確保至少 4 個段落，每段 2–4 句：
-        標題：${title ?: "(no title)"}
-        原始HTML：```html
-        $originalHtml
-        ```
-        
-        請以 JSON 物件回覆，鍵名固定如下（使用英文 key，所有中文請一律使用「繁體中文」）：
-        {
-          "optimized_html": string,
-          "optimized_zh_html": string,
-          "title": string,
-          "title_zh": string,
-          "cleaned_text": string,
-          "cleaned_text_zh": string,
-          "word_count": number,             // 英文正文的單字數
-          "summary_en": string,
-          "summary_zh": string,
-${EXPLANATION_JSON_SCHEMA.prependIndent("          ")}
-        }
-        
-        重要要求：
-        1. 重寫的文章長度必須控制在 400~600 個英文單字之間，托福難度。
-        2. HTML 結構必須簡潔且語意化，遵守上述 HTML 規則。
-        3. 重寫後的英文與中文 HTML 要保持相同結構。
-        4. 文章段落必須至少 4 段，且每段都用 <p> 標籤包裹。
-        5. 每段文字必須含 2-4 個句子，確保文章結構良好。
-        6. 題目難度適中，選項需有辨識度。
-    """.trimIndent()
-
-    /**
      * Stage 1 Rewrite System Prompt，依照難度調整篇幅與語域。
      */
     fun rewriteStage1SystemPrompt(difficulty: DifficultyLevel): String {
@@ -278,7 +221,7 @@ ${HTML_STRUCTURE_RULES.prependIndent("          ")}
         難度與篇幅要求：$wordRangeHint
         $difficultyInstruction
         其他限制：
-        1. 文章段落必須至少 4 段，每段使用 <p> 包裹並包含 2–4 句。
+        1. 文章段落必須至少 4 段，每段使用 <p> 包裹，句子數量請依難度自然調整。
         2. 必須保留原始 HTML 內所有圖片相關元素（figure、img、figcaption），位置盡量對應。
         3. 產出英文標題並維持正式、精確的語氣。
     """.trimIndent()

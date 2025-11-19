@@ -367,44 +367,6 @@ class AiArticleProcessorService(
     }
 
     /**
-     * 將文章重寫為 400~600 字的托福難度短文，並在單一請求中完成所有 AI 處理。
-     *
-     * 流程：
-     * 1. 將文章標題與原始 HTML 內容送交 AI
-     * 2. 請 AI 重寫為 400~600 字的托福難度短文（英文與中文版本）
-     * 3. 產生標題、摘要、清理後純文字內容（中英文）
-     * 4. 產生詳細的教學解說（字彙、文法、句型、題目等）
-     *
-     * @param title 文章標題
-     * @param originalHtml 原始 HTML 內容
-     * @return 包含所有處理結果的 JSON 物件
-     */
-    @Deprecated("Use rewriteStage1 and teachingStage2 instead for a two-stage approach")
-    fun rewriteAndProcess(title: String?, originalHtml: String): JsonNode {
-        require(apiKey.isNotBlank()) { "OPENAI_API_KEY / openai.api-key is required" }
-        if (originalHtml.isBlank()) {
-            throw IllegalArgumentException("Article HTML content is empty; cannot process with AI")
-        }
-
-        val stage1Result = rewriteStage1(title, originalHtml)
-        val rewrittenText = stage1Result.path("cleaned_text").asText()
-        val teachingResult = teachingStage2(title, rewrittenText)
-
-        // Build a new ObjectNode to properly combine the two results
-        val combinedResult = objectMapper.createObjectNode()
-        stage1Result.fields().forEach { (key, value) ->
-            combinedResult.set<JsonNode>(key, value)
-        }
-        // If teaching_result has explanation, extract it to top-level
-        val explanationNode = teachingResult.path("explanation")
-        if (!explanationNode.isMissingNode && !explanationNode.isNull) {
-            combinedResult.set<JsonNode>("explanation", explanationNode)
-        }
-        combinedResult.set<JsonNode>("teaching_result", teachingResult)
-        return combinedResult
-    }
-
-    /**
      * 計算英文文章的字數
      *
      * @param text 文章內容
