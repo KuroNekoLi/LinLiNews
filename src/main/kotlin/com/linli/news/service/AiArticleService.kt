@@ -591,7 +591,7 @@ class AiArticleService(
                             )
 
                             // 驗證 AI 重寫與處理結果（註解改為繁體中文）
-                            if (!validateRewriteAndProcessResult(combinedResult)) {
+                            if (!validateRewriteAndProcessResult(combinedResult, difficultyLevel)) {
                                 logger.error(
                                     "AI 重寫與處理結果驗證失敗，文章 ID {}",
                                     articleId
@@ -667,16 +667,18 @@ class AiArticleService(
      * @param result AI 回應的 JSON 結果
      * @return 驗證成功回傳 true，失敗回傳 false
      */
-    private fun validateRewriteAndProcessResult(result: JsonNode): Boolean {
+    private fun validateRewriteAndProcessResult(result: JsonNode, difficulty: DifficultyLevel): Boolean {
         try {
             // 1. 檢查字數
             val cleanedText = result.path("cleaned_text").asText("")
-            val aiReportedCount = result.path("word_count").asInt(-1)
             val ourCount = countEnglishWords(cleanedText)
-            logger.debug("[AI] Reported word count: $aiReportedCount; Locally calculated word count: $ourCount")
+            val minWords = difficulty.minWords
+            val maxWords = difficulty.maxWords
+            logger.debug("[AI] 計算出的字數：$ourCount，難度：${difficulty.label}(${difficulty.cefrCode})，預期範圍：${maxWords?.let { "$minWords-$it" } ?: "$minWords+"}")
 
-            if (ourCount !in 400..600) {
-                logger.warn("[AI] Article word count = $ourCount, not in required range 400..600")
+            val validWordCount = if (maxWords != null) ourCount in minWords..maxWords else ourCount >= minWords
+            if (!validWordCount) {
+                logger.warn("[AI] Article word count = $ourCount, not in required range for difficulty ${difficulty.label}")
                 return false
             }
 

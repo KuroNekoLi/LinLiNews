@@ -321,14 +321,33 @@ ${EXPLANATION_JSON_SCHEMA.prependIndent("          ")}
     /**
      * 依難度調整教學解析的說明文字。
      */
-    private fun explanationTaskDescription(difficulty: DifficultyLevel): String {
-        val base = EXPLANATION_TASK_DESCRIPTION
-        val addon = when (difficulty) {
-            DifficultyLevel.EASY -> "- 讀者為中階學習者，解說需貼近生活情境並給予具體例子。"
-            DifficultyLevel.NORMAL -> "- 讀者具 B2 能力，可加入比較觀點或常見錯誤提示。"
-            DifficultyLevel.HARD -> "- 讀者具 C1 能力，鼓勵使用轉折語、比喻並點出隱含意涵。"
-            DifficultyLevel.VERY_HARD -> "- 讀者為專業人士或母語者，解說可批判性、分析性並使用專業術語。"
-        }
-        return base + "\n        " + addon
+    private fun explanationTaskDescription(difficulty: DifficultyLevel): String = when (difficulty) {
+        DifficultyLevel.EASY -> """
+            - Vocabulary：挑選符合 B1 的中階字彙，提供詞性、英中釋義與生活情境例句，避免過於初級或過度專業的用詞。
+            - Grammar：聚焦文章相關的核心時態或句型，給出雙語重點與例句，解說務必直白清晰且可立即運用。
+            - Sentence patterns / Phrases / Idioms：介紹實用句型與片語，附上雙語解說與例句，句子不要過長，避免太艱澀的習語。
+            - Comprehension Q&A：4 題四選一，題目、選項與答案都需中英文，解析用淺白中文說明常見迷思或易混淆處。
+        """.trimIndent()
+
+        DifficultyLevel.NORMAL -> """
+            - Vocabulary：選用 B2 層級的常見但具挑戰性的單字，提供詞性、精確英中釋義與雙語例句，點出語境或搭配詞。
+            - Grammar：說明文章中較進階的語法（如虛擬語氣、分詞構句），給予雙語重點與例句，補充常見錯誤提醒。
+            - Sentence patterns / Phrases / Idioms：挑選能展開論述的句型或片語，附雙語解說與例句，可示範轉折、對比等連接。
+            - Comprehension Q&A：4 題四選一，雙語題幹與選項，答案後以中文解析邏輯並強調關鍵線索，難度對應 B2。
+        """.trimIndent()
+
+        DifficultyLevel.HARD -> """
+            - Vocabulary：使用 C1 層級字彙，涵蓋抽象或專業概念，提供詞性、英中釋義、語氣/註冊說明與雙語例句，能展示語義層次。
+            - Grammar：聚焦複合句、強調句、倒裝等高階結構，雙語解說需指出語用效果並給出多樣例句。
+            - Sentence patterns / Phrases / Idioms：選擇能呈現批判或分析的句型與慣用語，雙語解說，例句可加入比喻或轉折。
+            - Comprehension Q&A：4 題四選一，雙語呈現，答案解析以中文詳述推理過程、陷阱與語意細節，難度對應 C1。
+        """.trimIndent()
+
+        DifficultyLevel.VERY_HARD -> """
+            - Vocabulary：採用 C2 層級的高階或專業詞彙，提供詞性、英中釋義、語源/搭配詞與雙語例句，凸顯細膩語氣或文化脈絡。
+            - Grammar：說明文中精緻的語法選擇（如名詞化、強烈省略、跨句銜接），雙語解析需揭示隱含意涵與語體效果。
+            - Sentence patterns / Phrases / Idioms：聚焦高階句型、固定搭配或習語，雙語解說並以學術/專業語域寫例句，可帶批判或分析視角。
+            - Comprehension Q&A：4 題四選一，題幹與選項需雙語，答案解析以中文深入討論推論與批判性細節，難度對應 C2。
+        """.trimIndent()
     }
 }
