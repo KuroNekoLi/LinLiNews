@@ -156,7 +156,7 @@ class AiArticleServiceTest {
         every { articleRepository.findAll() } returns listOf(article)
         every { articleAiRepository.findByArticle_Id(1) } returns Optional.of(existingAi)
 
-        val (result, total, processedCount) = service.randomWithProcessing(1, null, null)
+        val (result, total, processedCount) = service.randomWithProcessing(1, null, null, null)
 
         assertEquals(1, result.size)
         assertEquals(1, total)
@@ -178,7 +178,7 @@ class AiArticleServiceTest {
 
         every { articleRepository.findAll() } returns listOf(articleWithoutContent)
 
-        val (result, total, processedCount) = service.randomWithProcessing(1, null, null)
+        val (result, total, processedCount) = service.randomWithProcessing(1, null, null, null)
 
         assertTrue(result.isEmpty())
         assertEquals(0, total)
@@ -223,7 +223,7 @@ class AiArticleServiceTest {
         )
         every { articleAiRepository.save(any<ArticleAi>()) } answers { firstArg() }
 
-        val (result, _, processedCount) = service.randomWithProcessing(1, null, null)
+        val (result, _, processedCount) = service.randomWithProcessing(1, null, null, null)
 
         assertEquals(1, processedCount)
         assertTrue(result.isNotEmpty())
@@ -268,7 +268,7 @@ class AiArticleServiceTest {
             firstArg<ArticleAi>().apply { id = 100 }
         }
 
-        val (_, total, processedCount) = service.randomWithProcessing(2, null, null)
+        val (_, total, processedCount) = service.randomWithProcessing(2, null, null, null)
 
         assertEquals(1, processedCount) // 只有一篇成功處理
         assertEquals(2, total) // 總共有2篇文章可選

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.linli.news.domain.Article
 import com.linli.news.domain.ArticleAi
+import com.linli.news.domain.ArticleAiContent
 import com.linli.news.model.AiArticleDetail
 import com.linli.news.model.DifficultyContent
 import com.linli.news.model.DifficultyLevel
@@ -22,6 +23,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.server.ResponseStatusException
+import java.time.OffsetDateTime
 import java.util.concurrent.ConcurrentHashMap
 import java.util.regex.Pattern
 
@@ -165,77 +167,41 @@ class AiArticleService(
     ): ArticleAi {
         title = json.path("title").asText(null)
         titleZh = json.path("title_zh").asText(null)
-        optimizedHtml = optimizedResult.optimizedHtml
-        optimizedZhHtml = optimizedResult.optimizedZhHtml
-        cleanedText = json.path("cleaned_text").asText(null)
-        cleanedTextZh = json.path("cleaned_text_zh").asText(null)
         summaryEn = json.path("summary_en").asText(null)
         summaryZh = json.path("summary_zh").asText(null)
+
+        val targetContent = difficultyContents.firstOrNull { it.difficulty == difficulty }
+            ?: ArticleAiContent(articleAi = this, difficulty = difficulty).also { difficultyContents.add(it) }
+
+        targetContent.optimizedHtml = optimizedResult.optimizedHtml
+        targetContent.optimizedZhHtml = optimizedResult.optimizedZhHtml
+        targetContent.cleanedText = json.path("cleaned_text").asText(null)
+        targetContent.cleanedTextZh = json.path("cleaned_text_zh").asText(null)
+
         val expNode = json.path("explanation")
-        explanation = if (!expNode.isMissingNode && !expNode.isNull && expNode.isObject) {
-            expNode.toString()
-        } else {
-            explanation
+        if (!expNode.isMissingNode && !expNode.isNull && expNode.isObject) {
+            targetContent.explanation = expNode.toString()
         }
-        when (difficulty) {
-            DifficultyLevel.EASY -> contentEasy = buildDifficultyContentJson(difficulty, optimizedResult, json)
-            DifficultyLevel.NORMAL -> contentNormal = buildDifficultyContentJson(difficulty, optimizedResult, json)
-            DifficultyLevel.HARD -> contentHard = buildDifficultyContentJson(difficulty, optimizedResult, json)
-            DifficultyLevel.VERY_HARD -> contentVeryHard = buildDifficultyContentJson(difficulty, optimizedResult, json)
-        }
+
+        targetContent.updatedAt = OffsetDateTime.now()
+
         return this
     }
 
     /**
-     * 建立難度對應的內容 JSON 字串。
+     * 將資料庫實體轉成 API 用的難度內容模型。
      */
-    private fun buildDifficultyContentJson(
-        difficulty: DifficultyLevel,
-        optimizedResult: HtmlOptimizationResult,
-        json: JsonNode
-    ): String {
-        val node = objectMapper.createObjectNode()
-        node.put("difficulty", difficulty.name)
-        node.put("optimized_html", optimizedResult.optimizedHtml)
-        node.put("optimized_zh_html", optimizedResult.optimizedZhHtml)
-        node.put("cleaned_text", json.path("cleaned_text").asText(null))
-        node.put("cleaned_text_zh", json.path("cleaned_text_zh").asText(null))
-        val expNode = json.path("explanation")
-        if (!expNode.isMissingNode && !expNode.isNull) {
-            node.set<JsonNode>("explanation", expNode)
-        }
-        return node.toString()
-    }
-
-    /**
-     * 將 JSON 字串轉成難度內容資料模型。
-     */
-    private fun parseDifficultyContent(json: String?, fallbackDifficulty: DifficultyLevel): DifficultyContent? {
-        if (json.isNullOrBlank()) {
-            return null
-        }
-        return try {
-            val node = objectMapper.readTree(json)
-            val difficultyValue = node.path("difficulty").asText(fallbackDifficulty.name)
-            val difficulty = runCatching { DifficultyLevel.valueOf(difficultyValue) }.getOrDefault(fallbackDifficulty)
-            val explanationNode = node.path("explanation")
-            val explanation = if (!explanationNode.isMissingNode && !explanationNode.isNull) {
-                parseExplanationNode(explanationNode)
-            } else {
-                null
-            }
-            DifficultyContent(
-                difficulty = difficulty,
-                optimizedHtml = node.path("optimized_html").asText(null),
-                optimizedZhHtml = node.path("optimized_zh_html").asText(null),
-                cleanedText = node.path("cleaned_text").asText(null),
-                cleanedTextZh = node.path("cleaned_text_zh").asText(null),
-                explanation = explanation
-            )
-        } catch (e: Exception) {
-            logger.warn("Failed to parse difficulty content JSON: ${e.message}")
-            null
-        }
+    private fun ArticleAiContent.toDifficultyContent(): DifficultyContent {
+        val explanationNode = explanation?.let { runCatching { objectMapper.readTree(it) }.getOrNull() }
+        val explanationModel = explanationNode?.let { parseExplanationNode(it) }
+        return DifficultyContent(
+            difficulty = difficulty,
+            optimizedHtml = optimizedHtml,
+            optimizedZhHtml = optimizedZhHtml,
+            cleanedText = cleanedText,
+            cleanedTextZh = cleanedTextZh,
+            explanation = explanationModel
+        )
     }
 
     @Transactional
@@ -298,7 +264,12 @@ class AiArticleService(
         if (size <= count) this else shuffled().take(count)
 
     // 随机取得 n 篇 AI 文章
-    fun random(count: Int, source: String?, section: String?): Pair<List<ArticleAi>, Int> {
+    fun random(
+        count: Int,
+        source: String?,
+        section: String?,
+        difficulty: DifficultyLevel?
+    ): Pair<List<ArticleAi>, Int> {
         val page = PageRequest.of(0, 10000)
         val pageData = when {
             !source.isNullOrBlank() && !section.isNullOrBlank() ->
@@ -314,8 +285,17 @@ class AiArticleService(
         }
         val all = pageData.content
         if (all.isEmpty()) return Pair(emptyList(), 0)
-        val sampled = if (all.size <= count) all else all.shuffled().take(count)
-        return Pair(sampled, all.size)
+
+        val eligible = difficulty?.let { level ->
+            all.filter { article -> article.difficultyContents.any { it.difficulty == level } }
+        } ?: all
+
+        if (eligible.isEmpty()) {
+            return Pair(emptyList(), 0)
+        }
+
+        val sampled = if (eligible.size <= count) eligible else eligible.shuffled().take(count)
+        return Pair(sampled, eligible.size)
     }
 
     /**
@@ -331,7 +311,12 @@ class AiArticleService(
      * @param section 区块名称过滤（可选，例如 news、world、technology）
      * @return Triple of (已处理的 AI 文章清单, 符合条件的可用文章总数, 本次成功处理的文章数)
      */
-    fun randomWithProcessing(count: Int, source: String?, section: String?): Triple<List<ArticleAi>, Int, Int> {
+    fun randomWithProcessing(
+        count: Int,
+        source: String?,
+        section: String?,
+        difficulty: DifficultyLevel?
+    ): Triple<List<ArticleAi>, Int, Int> {
         val allArticles = loadProcessableArticles(source, section)
 
         if (allArticles.isEmpty()) {
@@ -423,7 +408,7 @@ class AiArticleService(
 
                             // 4. 寫入：透過 Semaphore 確保同一時間只有一個寫入
                             writeSemaphore.withPermit {
-                                saveAiResult(fullArticle, json, optimizedResult)
+                                saveAiResult(fullArticle, json, optimizedResult, difficulty ?: DifficultyLevel.NORMAL)
                             }
                         }
 
@@ -697,13 +682,16 @@ class AiArticleService(
         }
     }
 
-    fun getOrProcessDto(articleId: Long): AiArticleDetail {
+    fun getOrProcessDto(articleId: Long, difficulty: DifficultyLevel?): AiArticleDetail {
         val aiArticle = getOrProcess(articleId)
-        return toDto(aiArticle.article, aiArticle)
+        return toDto(aiArticle.article, aiArticle, difficulty)
     }
 
     @Transactional
-    fun processAndOverwrite(articleId: Long): ArticleAi {
+    fun processAndOverwrite(
+        articleId: Long,
+        difficulty: DifficultyLevel = DifficultyLevel.NORMAL
+    ): ArticleAi {
         val article = articleRepository.findById(articleId).orElseThrow()
         require(!article.contentHtml.isNullOrBlank()) { "Article has no contentHtml; please fetch full content first" }
 
@@ -728,23 +716,31 @@ class AiArticleService(
         entity.applyFrom(
             json,
             HtmlOptimizationResult(optimizedResult.optimizedHtml, optimizedResult.optimizedZhHtml),
-            DifficultyLevel.NORMAL
+            difficulty
         )
 
         return articleAiRepository.save(entity)
     }
 
-    fun processAndOverwriteDto(articleId: Long): AiArticleDetail {
-        val aiArticle = processAndOverwrite(articleId)
-        return toDto(aiArticle.article, aiArticle)
+    fun processAndOverwriteDto(articleId: Long, difficulty: DifficultyLevel?): AiArticleDetail {
+        val targetDifficulty = difficulty ?: DifficultyLevel.NORMAL
+        val aiArticle = processAndOverwrite(articleId, targetDifficulty)
+        return toDto(aiArticle.article, aiArticle, targetDifficulty)
     }
 
-    private fun toDto(article: Article, aiArticle: ArticleAi): AiArticleDetail {
+    private fun toDto(
+        article: Article,
+        aiArticle: ArticleAi,
+        requestedDifficulty: DifficultyLevel?
+    ): AiArticleDetail {
         val articleId = requireNotNull(article.id) { "Article must have an ID" }
-        val easyContent = parseDifficultyContent(aiArticle.contentEasy, DifficultyLevel.EASY)
-        val normalContent = parseDifficultyContent(aiArticle.contentNormal, DifficultyLevel.NORMAL)
-        val hardContent = parseDifficultyContent(aiArticle.contentHard, DifficultyLevel.HARD)
-        val veryHardContent = parseDifficultyContent(aiArticle.contentVeryHard, DifficultyLevel.VERY_HARD)
+        val selectedContent = selectContent(aiArticle, requestedDifficulty)
+        val difficultyContent = selectedContent?.toDifficultyContent()
+        val available = aiArticle.difficultyContents
+            .map { it.difficulty }
+            .distinct()
+            .sortedBy { it.ordinal }
+
         return AiArticleDetail(
             id = articleId,
             sourceName = article.source.name,
@@ -752,15 +748,39 @@ class AiArticleService(
             title = article.title,
             publishedAt = article.publishedAt?.toString(),
             originalUrl = article.originalUrl,
-            contentHtml = normalContent?.optimizedHtml ?: article.contentHtml,
+            contentHtml = difficultyContent?.optimizedHtml ?: article.contentHtml,
             titleZh = aiArticle.titleZh,
             summaryEn = aiArticle.summaryEn,
             summaryZh = aiArticle.summaryZh,
-            easy = easyContent,
-            normal = normalContent,
-            hard = hardContent,
-            veryHard = veryHardContent
+            requestedDifficulty = requestedDifficulty,
+            content = difficultyContent,
+            availableDifficulties = available
         )
+    }
+
+    fun toDetail(aiArticle: ArticleAi, requestedDifficulty: DifficultyLevel?): AiArticleDetail {
+        return toDto(aiArticle.article, aiArticle, requestedDifficulty)
+    }
+
+    private fun selectContent(aiArticle: ArticleAi, requestedDifficulty: DifficultyLevel?): ArticleAiContent? {
+        if (aiArticle.difficultyContents.isEmpty()) {
+            return null
+        }
+
+        if (requestedDifficulty != null) {
+            aiArticle.difficultyContents.firstOrNull { it.difficulty == requestedDifficulty }?.let { return it }
+        }
+
+        val priority = listOf(
+            DifficultyLevel.NORMAL,
+            DifficultyLevel.HARD,
+            DifficultyLevel.VERY_HARD,
+            DifficultyLevel.EASY
+        )
+
+        return priority.firstNotNullOfOrNull { level ->
+            aiArticle.difficultyContents.firstOrNull { it.difficulty == level }
+        } ?: aiArticle.difficultyContents.firstOrNull()
     }
 
     /**
@@ -778,63 +798,6 @@ class AiArticleService(
             logger.warn("Failed to parse explanation node: ${e.message}")
             null
         }
-    }
-
-    // 修復匯入問題：使用更寬容的解析方案，並相容常見的 explanation 結構異常
-    private fun parseExplanationWithFallback(explanationJson: String?, articleId: Long): Explanation? {
-        if (explanationJson.isNullOrBlank()) {
-            logger.warn("Article $articleId has null or blank explanation JSON")
-            return null
-        }
-
-        val tolerantMapper = objectMapper.copy()
-        tolerantMapper.configure(
-            com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,
-            false
-        )
-        tolerantMapper.configure(
-            com.fasterxml.jackson.databind.DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT,
-            true
-        )
-
-        // 第一步：嘗試常規反序列化
-        try {
-            val parsedExplanation = tolerantMapper.readValue(explanationJson, Explanation::class.java)
-            logger.info("Successfully parsed explanation for article $articleId: vocab=${parsedExplanation.vocabulary?.size}, grammar=${parsedExplanation.grammar?.size}, mcq=${parsedExplanation.comprehensionMcq?.size}")
-            return parsedExplanation
-        } catch (e: Exception) {
-            logger.warn("Failed to parse explanation JSON for article $articleId: ${e.message}")
-            logger.debug("Raw explanation JSON: $explanationJson")
-        }
-
-        // 第二步：如果 explanation 欄位巢狀，嘗試提取 explanation 根節點（修復匯入常見問題）
-        try {
-            val root = tolerantMapper.readTree(explanationJson)
-            if (root.has("explanation")) {
-                val explanationNode = root.get("explanation")
-                val explanationStr = explanationNode.toString()
-                try {
-                    val parsedExplanation = tolerantMapper.readValue(explanationStr, Explanation::class.java)
-                    logger.info("Successfully parsed nested explanation for article $articleId: vocab=${parsedExplanation.vocabulary?.size}, grammar=${parsedExplanation.grammar?.size}, mcq=${parsedExplanation.comprehensionMcq?.size}")
-                    return parsedExplanation
-                } catch (e: Exception) {
-                    logger.warn("Nested explanation parsing failed for article $articleId: ${e.message}")
-                }
-            }
-        } catch (e: Exception) {
-            logger.debug("Could not parse explanation as JSON tree for article $articleId: ${e.message}")
-        }
-
-        // 第三步（可選）：AI 匯出時不完整或格式異常
-        try {
-            if (!explanationJson.trim().endsWith("}")) {
-                logger.warn("Article $articleId explanation JSON appears to be truncated")
-            }
-        } catch (_: Exception) {
-        }
-
-        logger.warn("Returning null for explanation of article $articleId due to unrecoverable parse errors")
-        return null
     }
 
     private fun extractTextFromHtml(html: String?): String? {

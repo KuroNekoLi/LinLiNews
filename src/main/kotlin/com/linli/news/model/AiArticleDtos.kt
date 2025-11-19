@@ -40,21 +40,16 @@ data class AiArticleDetail(
     @Schema(description = "AI 產生的中文摘要")
     val summaryZh: String?,
 
-    @field:JsonProperty("easy")
-    @Schema(description = "B1 難度（Easy）版本的內容")
-    val easy: DifficultyContent?,
+    @field:JsonProperty("requested_difficulty")
+    @Schema(description = "使用者指定的難度等級")
+    val requestedDifficulty: DifficultyLevel?,
 
-    @field:JsonProperty("normal")
-    @Schema(description = "B2 難度（Normal）版本的內容")
-    val normal: DifficultyContent?,
+    @Schema(description = "依難度回傳的內容")
+    val content: DifficultyContent?,
 
-    @field:JsonProperty("hard")
-    @Schema(description = "C1 難度（Hard）版本的內容")
-    val hard: DifficultyContent?,
-
-    @field:JsonProperty("very_hard")
-    @Schema(description = "C2 難度（VeryHard）版本的內容")
-    val veryHard: DifficultyContent?
+    @field:JsonProperty("available_difficulties")
+    @Schema(description = "此篇文章目前可用的難度列表")
+    val availableDifficulties: List<DifficultyLevel> = emptyList()
 )
 
 @Schema(name = "DifficultyContent", description = "依照難度分級的文章內容與解析")

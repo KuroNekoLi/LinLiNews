@@ -2,9 +2,7 @@ package com.linli.news.controller
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import com.linli.news.domain.ArticleAi
 import com.linli.news.model.AiArticleDetail
-import com.linli.news.model.DifficultyContent
 import com.linli.news.model.DifficultyLevel
 import com.linli.news.model.Explanation
 import com.linli.news.model.RandomArticlesFilters
@@ -58,9 +56,14 @@ class AiArticleController(
         @Parameter(description = "頁碼（0 起算）")
         @RequestParam(name = "page", defaultValue = "0") page: Int,
         @Parameter(description = "每頁筆數（預設 20）")
-        @RequestParam(name = "size", defaultValue = "20") size: Int
+        @RequestParam(name = "size", defaultValue = "20") size: Int,
+        @Parameter(
+            description = "指定文章輸出的難度等級（Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
+            schema = Schema(implementation = DifficultyLevel::class)
+        )
+        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?
     ): Page<AiArticleDetail> {
-        return aiArticleService.listProcessed(page, size).map { toDto(it) }
+        return aiArticleService.listProcessed(page, size).map { aiArticleService.toDetail(it, difficulty) }
     }
 
     /**
@@ -74,9 +77,15 @@ class AiArticleController(
         summary = "取得單篇 AI 文章（無則即時處理並落地）",
         description = "若文章尚未處理，會立即進行 AI 處理並儲存"
     )
-    fun getOrProcess(@PathVariable articleId: Long): AiArticleDetail {
-        val ai = aiArticleService.getOrProcess(articleId)
-        return toDto(ai)
+    fun getOrProcess(
+        @PathVariable articleId: Long,
+        @Parameter(
+            description = "指定文章輸出的難度等級（Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
+            schema = Schema(implementation = DifficultyLevel::class)
+        )
+        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?
+    ): AiArticleDetail {
+        return aiArticleService.getOrProcessDto(articleId, difficulty)
     }
 
     /**
@@ -107,16 +116,21 @@ class AiArticleController(
         @Parameter(description = "來源過濾，例如 BBC、CNN")
         @RequestParam(name = "source", required = false) source: String?,
         @Parameter(description = "區塊過濾，例如 news、world、technology")
-        @RequestParam(name = "section", required = false) section: String?
+        @RequestParam(name = "section", required = false) section: String?,
+        @Parameter(
+            description = "指定文章輸出的難度等級（Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
+            schema = Schema(implementation = DifficultyLevel::class)
+        )
+        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?
     ): RandomArticlesResponse {
         val limited = kotlin.math.min(count, 20)
-        val (aiList, total) = aiArticleService.random(limited, source, section)
-        val items = aiList.map { toDto(it) }
+        val (aiList, total) = aiArticleService.random(limited, source, section, difficulty)
+        val items = aiList.map { aiArticleService.toDetail(it, difficulty) }
         return RandomArticlesResponse(
             requestedCount = limited,
             actualCount = items.count(),
             totalAvailable = total,
-            filters = RandomArticlesFilters(source = source, section = section, difficulty = null),
+            filters = RandomArticlesFilters(source = source, section = section, difficulty = difficulty),
             articles = items
         )
     }
@@ -168,7 +182,7 @@ class AiArticleController(
         val limited = kotlin.math.min(count, 20)
         val (aiList, total, processedCount) =
             aiArticleService.randomWithRewriteAndProcessing(limited, source, section, difficulty)
-        val items = aiList.map { toDto(it) }
+        val items = aiList.map { aiArticleService.toDetail(it, difficulty) }
         return RandomWithProcessingResponse(
             requestedCount = limited,
             actualCount = items.count(),
@@ -198,14 +212,21 @@ class AiArticleController(
                 .find { it.article.id == id }
                 ?: return ResponseEntity.notFound().build()
 
+            val contentSummary = aiArticle.difficultyContents.associate { content ->
+                val key = content.difficulty.name
+                key to mapOf(
+                    "hasExplanation" to !content.explanation.isNullOrBlank(),
+                    "cleanedTextLength" to (content.cleanedText?.length ?: 0),
+                    "cleanedTextZhLength" to (content.cleanedTextZh?.length ?: 0)
+                )
+            }
+
             ResponseEntity.ok(
                 mapOf(
                     "articleId" to id,
-                    "explanationJson" to (aiArticle.explanation ?: "null"),
-                    "explanationLength" to (aiArticle.explanation?.length ?: 0),
-                    "hasExplanation" to !aiArticle.explanation.isNullOrBlank(),
                     "titleZh" to aiArticle.titleZh,
-                    "cleanedTextLength" to (aiArticle.cleanedText?.length ?: 0)
+                    "availableDifficulties" to contentSummary.keys,
+                    "contentSummary" to contentSummary
                 ) as Map<String, Any>
             )
         } catch (e: Exception) {
@@ -233,9 +254,9 @@ class AiArticleController(
     )
     fun reprocessArticleWithDebug(@PathVariable id: Long): ResponseEntity<Map<String, Any>> {
         return try {
-            val result = aiArticleService.processAndOverwriteDto(id)
-            val preferredContent = pickPreferredContent(result)
-            val explanation = preferredContent?.explanation
+            val result = aiArticleService.processAndOverwriteDto(id, null)
+            val content = result.content
+            val explanation = content?.explanation
             ResponseEntity.ok(
                 mapOf(
                     "success" to true,
@@ -256,8 +277,8 @@ class AiArticleController(
                     } else null,
                     "message" to "文章已重新處理",
                     "titleZh" to result.titleZh,
-                    "cleanedTextLength" to (preferredContent?.cleanedText?.length ?: 0),
-                    "cleanedTextZhLength" to (preferredContent?.cleanedTextZh?.length ?: 0)
+                    "cleanedTextLength" to (content?.cleanedText?.length ?: 0),
+                    "cleanedTextZhLength" to (content?.cleanedTextZh?.length ?: 0)
                 ) as Map<String, Any>
             )
         } catch (e: Exception) {
@@ -270,15 +291,6 @@ class AiArticleController(
                 ) as Map<String, Any>
             )
         }
-    }
-
-    /**
-     * 依難度優先順序選擇最適合用於診斷的重寫內容。
-     *
-     * 優先順序：Normal → Hard → VeryHard → Easy。
-     */
-    private fun pickPreferredContent(detail: AiArticleDetail): DifficultyContent? {
-        return detail.normal ?: detail.hard ?: detail.veryHard ?: detail.easy
     }
 
     /**
@@ -327,62 +339,4 @@ class AiArticleController(
         }
     }
 
-    /**
-     * 將 ArticleAi 實體轉換為 DTO
-     *
-     * @param ai AI 文章實體
-     * @return AI 文章詳細資料 DTO
-     */
-    private fun toDto(ai: ArticleAi): AiArticleDetail {
-        val a = ai.article
-        val articleId = requireNotNull(a.id) { "Article must have an ID" }
-        val easyContent = parseDifficultyContent(ai.contentEasy, DifficultyLevel.EASY)
-        val normalContent = parseDifficultyContent(ai.contentNormal, DifficultyLevel.NORMAL)
-        val hardContent = parseDifficultyContent(ai.contentHard, DifficultyLevel.HARD)
-        val veryHardContent = parseDifficultyContent(ai.contentVeryHard, DifficultyLevel.VERY_HARD)
-
-        return AiArticleDetail(
-            id = articleId,
-            sourceName = a.source.name,
-            section = a.source.section,
-            title = a.title,
-            publishedAt = a.publishedAt?.toString(),
-            originalUrl = a.originalUrl,
-            contentHtml = normalContent?.optimizedHtml ?: a.contentHtml,
-            titleZh = ai.titleZh,
-            summaryEn = ai.summaryEn,
-            summaryZh = ai.summaryZh,
-            easy = easyContent,
-            normal = normalContent,
-            hard = hardContent,
-            veryHard = veryHardContent
-        )
-    }
-
-    /**
-     * 解析難度內容 JSON。 
-     */
-    private fun parseDifficultyContent(json: String?, fallback: DifficultyLevel): DifficultyContent? {
-        if (json.isNullOrBlank()) return null
-        return try {
-            val node = objectMapper.readTree(json)
-            val difficultyName = node.path("difficulty").asText(fallback.name)
-            val difficulty = runCatching { DifficultyLevel.valueOf(difficultyName) }.getOrDefault(fallback)
-            val explanationNode = node.path("explanation")
-            val explanation = if (!explanationNode.isMissingNode && !explanationNode.isNull) {
-                objectMapper.readValue(explanationNode.toString(), Explanation::class.java)
-            } else null
-            DifficultyContent(
-                difficulty = difficulty,
-                optimizedHtml = node.path("optimized_html").asText(null),
-                optimizedZhHtml = node.path("optimized_zh_html").asText(null),
-                cleanedText = node.path("cleaned_text").asText(null),
-                cleanedTextZh = node.path("cleaned_text_zh").asText(null),
-                explanation = explanation
-            )
-        } catch (e: Exception) {
-            logger.error("Failed to parse difficulty content JSON: ${e.message}")
-            null
-        }
-    }
 }
