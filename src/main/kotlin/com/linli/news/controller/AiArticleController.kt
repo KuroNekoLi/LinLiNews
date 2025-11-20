@@ -261,9 +261,17 @@ class AiArticleController(
                 )
             }
 
+            val representativeTitle = aiArticle.views
+                .firstOrNull { it.toLanguage.equals("zh-TW", ignoreCase = true) && !it.titleTo.isNullOrBlank() }
+                ?.titleTo
+                ?: aiArticle.views.firstOrNull { !it.titleTo.isNullOrBlank() }?.titleTo
+                ?: aiArticle.views.firstOrNull { !it.titleFrom.isNullOrBlank() }?.titleFrom
+                ?: aiArticle.title
+                ?: aiArticle.article.title
+
             val responseBody: Map<String, Any?> = mapOf(
                 "articleId" to id,
-                "titleZh" to aiArticle.titleZh,
+                "titleZh" to representativeTitle,
                 "availableViews" to aiArticle.views.map {
                     mapOf(
                         "difficulty" to it.difficulty.name,

@@ -188,7 +188,17 @@ class AiArticleServiceTest {
             contentHtml = "<p>Test content</p>"
         ).apply { id = 1; title = "Title" }
 
-        val existingAi = ArticleAi(article = article).apply { id = 99; titleZh = "已處理" }
+        val existingAi = ArticleAi(article = article).apply {
+            id = 99
+            views.add(
+                ArticleAiView(
+                    articleAi = this,
+                    difficulty = DifficultyLevel.NORMAL,
+                    fromLanguage = "en",
+                    toLanguage = "zh-TW"
+                ).apply { titleTo = "已處理" }
+            )
+        }
 
         every { articleRepository.findAll() } returns listOf(article)
         every { articleAiRepository.findByArticle_Id(1) } returns Optional.of(existingAi)
@@ -375,7 +385,17 @@ class AiArticleServiceTest {
             originalUrl = "https://test.com/1",
             contentHtml = "<p>Content</p>"
         ).apply { id = 1; title = "Title" }
-        val existingAi = ArticleAi(article = article).apply { id = 99; titleZh = "已處理標題" }
+        val existingAi = ArticleAi(article = article).apply {
+            id = 99
+            views.add(
+                ArticleAiView(
+                    articleAi = this,
+                    difficulty = DifficultyLevel.NORMAL,
+                    fromLanguage = "en",
+                    toLanguage = "zh-TW"
+                ).apply { titleTo = "已處理標題" }
+            )
+        }
 
         every { articleAiRepository.findByArticle_Id(1) } returns Optional.of(existingAi)
 

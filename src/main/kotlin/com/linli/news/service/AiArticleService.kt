@@ -207,9 +207,6 @@ class AiArticleService(
         val summaryTo = json.path("summary_to").asText(null) ?: json.path("summary_zh").asText(null)
 
         title = titleFrom
-        titleZh = titleTo
-        summaryEn = summaryFrom
-        summaryZh = summaryTo
 
         val targetView = findOrCreateView(difficulty, fromLanguage, toLanguage)
         targetView.titleFrom = titleFrom
@@ -1123,9 +1120,9 @@ class AiArticleService(
         val finalFromLang = selectedView?.fromLanguage ?: fromLanguage
         val finalToLang = selectedView?.toLanguage ?: toLanguage
         val titleFrom = selectedView?.titleFrom ?: aiArticle.title ?: article.title
-        val titleTo = selectedView?.titleTo ?: aiArticle.titleZh
-        val summaryFrom = selectedView?.summaryFrom ?: aiArticle.summaryEn
-        val summaryTo = selectedView?.summaryTo ?: aiArticle.summaryZh
+        val titleTo = selectedView?.titleTo ?: selectedView?.titleFrom
+        val summaryFrom = selectedView?.summaryFrom
+        val summaryTo = selectedView?.summaryTo
 
         return AiArticleDetail(
             id = articleId,

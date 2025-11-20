@@ -10,9 +10,6 @@ import java.time.OffsetDateTime
  *
  * @property article 關聯的原始文章（一對一）
  * @property title 文章標題（AI 可能的調整版本）
- * @property titleZh 中文標題（AI 翻譯）
- * @property summaryEn AI 產生的英文摘要
- * @property summaryZh AI 產生的中文摘要
  * @property views 依語言與難度切分的視圖內容
  * @property id AI 文章唯一識別碼
  * @property createdAt 建立時間
@@ -33,18 +30,6 @@ class ArticleAi(
     /** 文章標題（最長 512 字元） */
     @Column(name = "title", length = 512)
     var title: String? = null,
-
-    /** 中文標題（AI 翻譯，最長 512 字元） */
-    @Column(name = "title_zh", length = 512)
-    var titleZh: String? = null,
-
-    /** 英文摘要（AI 產生，LONGTEXT 欄位） */
-    @Column(name = "summary_en", columnDefinition = "LONGTEXT")
-    var summaryEn: String? = null,
-
-    /** 中文摘要（AI 產生，LONGTEXT 欄位） */
-    @Column(name = "summary_zh", columnDefinition = "LONGTEXT")
-    var summaryZh: String? = null,
 
     /** 依語言與難度儲存的視圖內容 */
     @OneToMany(mappedBy = "articleAi", cascade = [CascadeType.ALL], orphanRemoval = true, fetch = FetchType.EAGER)
