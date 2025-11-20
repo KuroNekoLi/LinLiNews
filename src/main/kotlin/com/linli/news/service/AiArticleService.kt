@@ -2,29 +2,10 @@ package com.linli.news.service
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.linli.news.domain.Article
-import com.linli.news.domain.ArticleAi
-import com.linli.news.domain.ArticleAiComprehensionMcq
-import com.linli.news.domain.ArticleAiComprehensionOption
-import com.linli.news.domain.ArticleAiGrammarItem
-import com.linli.news.domain.ArticleAiPhraseIdiomItem
-import com.linli.news.domain.ArticleAiSentencePatternItem
-import com.linli.news.domain.ArticleAiView
-import com.linli.news.domain.ArticleAiVocabularyItem
-import com.linli.news.model.AiArticleDetail
-import com.linli.news.model.AiViewAvailability
-import com.linli.news.model.ComprehensionMcqItem
-import com.linli.news.model.DifficultyContent
-import com.linli.news.model.DifficultyLevel
-import com.linli.news.model.Explanation
-import com.linli.news.model.GrammarItem
-import com.linli.news.model.McqOption
-import com.linli.news.model.PhraseIdiomItem
-import com.linli.news.model.SentencePatternItem
-import com.linli.news.model.VocabularyItem
+import com.linli.news.domain.*
+import com.linli.news.model.*
 import com.linli.news.repository.ArticleAiRepository
 import com.linli.news.repository.ArticleRepository
-import com.linli.news.service.HtmlOptimizationResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
@@ -807,29 +788,13 @@ class AiArticleService(
                                     articleId
                                 )
 
-                                // Validate rewrite stage 1 result
+                                // 提取 Stage 1 的結果用於 Stage 2
                                 val stage1CleanedText = stage1Result.path("cleaned_text_from").asText(
                                     stage1Result.path("cleaned_text").asText("")
                                 )
                                 val stage1Title = stage1Result.path("title_from").asText(
                                     stage1Result.path("title").asText("")
                                 )
-                                val wordCountStage1 = countEnglishWords(stage1CleanedText)
-                                val hasEnoughPara = hasEnoughParagraphs(
-                                    stage1Result.path("optimized_html_from").asText(
-                                        stage1Result.path("optimized_html").asText("")
-                                    )
-                                )
-
-                                logger.info(
-                                    "Stage 1 validation: word count = {}, title present = {}, has enough paragraphs = {}",
-                                    wordCountStage1,
-                                    stage1Title.isNotBlank(),
-                                    hasEnoughPara
-                                )
-
-                                // rewriteStage1 已經內置重試機制和驗證，所以這裡不需要再額外檢查
-                                // 如果能到這裡，表示 stage1Result 已經通過驗證
 
                                 val stage2Result = aiProcessor.teachingStage2(
                                     difficultyLevel,
@@ -871,7 +836,7 @@ class AiArticleService(
                                     "optimized_html_to",
                                     stage1Result.path("optimized_html_to").asText(stage1Result.path("optimized_zh_html").asText(null))
                                 )
-                                combined.put("word_count", stage1Result.path("word_count").asInt(wordCountStage1))
+                                combined.put("word_count", stage1Result.path("word_count").asInt(0))
 
                                 // Stage2 的欄位：雙語標題、雙語摘要與解析
                                 combined.put(
@@ -927,15 +892,6 @@ class AiArticleService(
                                 optimizedHtmlTo = optimizedTo
                             )
 
-                            // 驗證 AI 重寫與處理結果（註解改為繁體中文）
-                            if (!validateRewriteAndProcessResult(combinedResult, difficultyLevel)) {
-                                logger.error(
-                                    "AI 重寫與處理結果驗證失敗，文章 ID {}",
-                                    articleId
-                                )
-                                throw Exception("AI 重寫與處理結果驗證失敗")
-                            }
-
                             // 5. 寫入：透過 Semaphore 確保同一時間只有一個寫入
                             writeSemaphore.withPermit {
                                 saveAiResult(
@@ -976,62 +932,7 @@ class AiArticleService(
         return Triple(result, allArticles.size, processedCount)
     }
 
-    /**
-     * 檢查 HTML 是否有足夠的段落
-     *
-     * @param html HTML 文字
-     * @param minParagraphs 最小段落數，預設為 4
-     * @return 如果段落數達到最小要求則回傳 true，否則回傳 false
-     */
-    private fun hasEnoughParagraphs(html: String?, minParagraphs: Int = 4): Boolean {
-        if (html == null || html.isBlank()) {
-            return false
-        }
-        // 使用更嚴謹的正則檢索 <p> 標籤，避免簡單 split 導致計數錯誤
-        val paragraphPattern = Regex("<p[^>]*>", RegexOption.IGNORE_CASE)
-        val paragraphCount = paragraphPattern.findAll(html).count()
-        return paragraphCount >= minParagraphs
-    }
 
-    /**
-     * 檢查並驗證 AI 重寫與處理的結果
-     *
-     * @param result AI 回應的 JSON 結果
-     * @return 驗證成功回傳 true，失敗回傳 false
-     */
-    private fun validateRewriteAndProcessResult(result: JsonNode, difficulty: DifficultyLevel): Boolean {
-        try {
-            // 1. 檢查字數
-            val cleanedText = result.path("cleaned_text_from").asText(
-                result.path("cleaned_text").asText("")
-            )
-            val ourCount = countEnglishWords(cleanedText)
-            val minWords = difficulty.minWords
-            val maxWords = difficulty.maxWords
-            logger.debug("[AI] 計算出的字數：$ourCount，難度：${difficulty.label}(${difficulty.cefrCode})，預期範圍：${maxWords?.let { "$minWords-$it" } ?: "$minWords+"}")
-
-            val validWordCount = if (maxWords != null) ourCount in minWords..maxWords else ourCount >= minWords
-            if (!validWordCount) {
-                logger.warn("[AI] Article word count = $ourCount, not in required range for difficulty ${difficulty.label}")
-                return false
-            }
-
-            // 2. 檢查段落數
-            val optimizedHtml = result.path("optimized_html_from").asText(
-                result.path("optimized_html").asText("")
-            )
-            if (!hasEnoughParagraphs(optimizedHtml)) {
-                logger.warn("[AI] Article does not have enough paragraphs (minimum 4 required)")
-                return false
-            }
-
-            // 所有驗證通過
-            return true
-        } catch (e: Exception) {
-            logger.error("Error validating AI rewrite and process result: {}", e.message, e)
-            return false
-        }
-    }
 
     fun getOrProcessDto(
         articleId: Long,
@@ -1316,13 +1217,4 @@ class AiArticleService(
         if (html == null) return null
         return htmlTagPattern.matcher(html).replaceAll("")
     }
-
-    /**
-     * 計算英文文本的單字數量
-     */
-    private fun countEnglishWords(text: String): Int =
-        text.split(Regex("\\s+"))
-            .count { token ->
-                token.any { ch -> ch.isLetter() }
-            }
 }

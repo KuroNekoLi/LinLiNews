@@ -21,5 +21,5 @@ enum class DifficultyLevel(
     EASY("Easy", "B1", 300, 600),
     NORMAL("Normal", "B2", 600, 900),
     HARD("Hard", "C1", 900, 1200),
-    VERY_HARD("VeryHard", "C2", 1200, null);
+    VERY_HARD("VeryHard", "C2", 900, null);
 }
