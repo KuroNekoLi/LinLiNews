@@ -3,8 +3,13 @@ package com.linli.news.controller
 import com.linli.news.domain.Article
 import com.linli.news.domain.ArticleAi
 import com.linli.news.domain.ArticleSource
+import com.linli.news.model.AiArticleDetail
+import com.linli.news.model.AiViewAvailability
+import com.linli.news.model.DifficultyContent
+import com.linli.news.model.DifficultyLevel
 import com.linli.news.service.AiArticleService
 import com.ninjasquad.springmockk.MockkBean
+import io.mockk.any
 import io.mockk.every
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -45,6 +50,42 @@ class AiArticleControllerTest {
         return ArticleAi(article = article).apply { this.id = id }
     }
 
+    private fun sampleDetail(id: Long = 1L): AiArticleDetail {
+        return AiArticleDetail(
+            id = id,
+            sourceName = "BBC",
+            section = "news",
+            title = "Title $id",
+            publishedAt = null,
+            originalUrl = "https://example.com/a$id",
+            contentHtml = "<p>content</p>",
+            titleFrom = "Title $id",
+            titleTo = "標題$id",
+            titleZh = "標題$id",
+            summaryFrom = "- point",
+            summaryTo = "- 重點",
+            summaryEn = "- point",
+            summaryZh = "- 重點",
+            requestedDifficulty = DifficultyLevel.NORMAL,
+            fromLanguage = "en",
+            toLanguage = "zh-TW",
+            content = DifficultyContent(
+                difficulty = DifficultyLevel.NORMAL,
+                fromLanguage = "en",
+                toLanguage = "zh-TW",
+                optimizedHtmlFrom = "<p>content</p>",
+                optimizedHtmlTo = "<p>內容</p>",
+                cleanedTextFrom = "text",
+                cleanedTextTo = "文字",
+                explanation = null
+            ),
+            availableDifficulties = listOf(DifficultyLevel.NORMAL),
+            availableViews = listOf(
+                AiViewAvailability(fromLanguage = "en", toLanguage = "zh-TW", difficulty = DifficultyLevel.NORMAL)
+            )
+        )
+    }
+
     /**
      * 測試 GET /api/ai-articles 應回傳 200
      */
@@ -52,6 +93,7 @@ class AiArticleControllerTest {
     fun `GET ai-articles should return 200`() {
         val page = PageImpl(listOf(sampleArticleAi(1)))
         every { aiArticleService.listProcessed(0, 20) } returns page
+        every { aiArticleService.toDetail(any(), any(), any(), any()) } returns sampleDetail()
 
         mockMvc.get("/api/ai-articles")
             .andExpect { status { isOk() } }
@@ -62,7 +104,7 @@ class AiArticleControllerTest {
      */
     @Test
     fun `GET ai-articles by id should return 200`() {
-        every { aiArticleService.getOrProcess(10) } returns sampleArticleAi(10)
+        every { aiArticleService.getOrProcessDto(10, null, "en", "zh-TW") } returns sampleDetail(10)
 
         mockMvc.get("/api/ai-articles/10")
             .andExpect { status { isOk() } }
@@ -74,7 +116,8 @@ class AiArticleControllerTest {
     @Test
     fun `GET ai-articles random should return 200`() {
         val list = listOf(sampleArticleAi(1), sampleArticleAi(2))
-        every { aiArticleService.random(2, null, null) } returns Pair(list, 2)
+        every { aiArticleService.random(2, null, null, null, "en", "zh-TW") } returns Pair(list, 2)
+        every { aiArticleService.toDetail(any(), any(), any(), any()) } returns sampleDetail()
 
         mockMvc.get("/api/ai-articles/random?count=2")
             .andExpect { status { isOk() } }
@@ -86,14 +129,25 @@ class AiArticleControllerTest {
     @Test
     fun `GET ai-articles random-with-processing should return 200 with processing stats`() {
         val list = listOf(sampleArticleAi(1))
-        every { aiArticleService.randomWithProcessing(1, null, null) } returns Triple(list, 10, 1)
+        every {
+            aiArticleService.randomWithRewriteAndProcessing(
+                1,
+                null,
+                null,
+                DifficultyLevel.HARD,
+                "en",
+                "zh-TW"
+            )
+        } returns Triple(list, 10, 1)
+        every { aiArticleService.toDetail(any(), any(), any(), any()) } returns sampleDetail()
 
-        mockMvc.get("/api/ai-articles/random-with-processing?count=1")
+        mockMvc.get("/api/ai-articles/random-with-processing?count=1&difficulty=HARD")
             .andExpect {
                 status { isOk() }
                 jsonPath("$.articles") { isArray() }
                 jsonPath("$.totalAvailable") { value(10) }
                 jsonPath("$.processedCount") { value(1) }
+                jsonPath("$.filters.difficulty") { value("HARD") }
             }
     }
 
@@ -103,7 +157,8 @@ class AiArticleControllerTest {
     @Test
     fun `GET ai-articles random should support source filter`() {
         val list = listOf(sampleArticleAi(1))
-        every { aiArticleService.random(5, "BBC", null) } returns Pair(list, 1)
+        every { aiArticleService.random(5, "BBC", null, null, "en", "zh-TW") } returns Pair(list, 1)
+        every { aiArticleService.toDetail(any(), any(), any(), any()) } returns sampleDetail()
 
         mockMvc.get("/api/ai-articles/random?count=5&source=BBC")
             .andExpect { status { isOk() } }
@@ -115,7 +170,8 @@ class AiArticleControllerTest {
     @Test
     fun `GET ai-articles random should support section filter`() {
         val list = listOf(sampleArticleAi(1))
-        every { aiArticleService.random(5, null, "technology") } returns Pair(list, 1)
+        every { aiArticleService.random(5, null, "technology", null, "en", "zh-TW") } returns Pair(list, 1)
+        every { aiArticleService.toDetail(any(), any(), any(), any()) } returns sampleDetail()
 
         mockMvc.get("/api/ai-articles/random?count=5&section=technology")
             .andExpect { status { isOk() } }

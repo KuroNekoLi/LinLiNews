@@ -2,13 +2,20 @@ package com.linli.news.controller
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import com.linli.news.domain.ArticleAi
 import com.linli.news.model.AiArticleDetail
+import com.linli.news.model.DifficultyLevel
 import com.linli.news.model.Explanation
+import com.linli.news.model.RandomArticlesFilters
+import com.linli.news.model.RandomArticlesResponse
+import com.linli.news.model.RandomWithProcessingResponse
 import com.linli.news.service.AiArticleService
 import io.swagger.v3.oas.annotations.Hidden
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Profile
@@ -49,9 +56,19 @@ class AiArticleController(
         @Parameter(description = "頁碼（0 起算）")
         @RequestParam(name = "page", defaultValue = "0") page: Int,
         @Parameter(description = "每頁筆數（預設 20）")
-        @RequestParam(name = "size", defaultValue = "20") size: Int
+        @RequestParam(name = "size", defaultValue = "20") size: Int,
+        @Parameter(
+            description = "指定文章輸出的難度等級（Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
+            schema = Schema(implementation = DifficultyLevel::class)
+        )
+        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?,
+        @Parameter(description = "原文語言碼（預設 en）")
+        @RequestParam(name = "fromLanguage", defaultValue = "en") fromLanguage: String,
+        @Parameter(description = "目標語言碼（預設 zh-TW）")
+        @RequestParam(name = "toLanguage", defaultValue = "zh-TW") toLanguage: String
     ): Page<AiArticleDetail> {
-        return aiArticleService.listProcessed(page, size).map { toDto(it) }
+        return aiArticleService.listProcessed(page, size)
+            .map { aiArticleService.toDetail(it, difficulty, fromLanguage, toLanguage) }
     }
 
     /**
@@ -65,9 +82,19 @@ class AiArticleController(
         summary = "取得單篇 AI 文章（無則即時處理並落地）",
         description = "若文章尚未處理，會立即進行 AI 處理並儲存"
     )
-    fun getOrProcess(@PathVariable articleId: Long): AiArticleDetail {
-        val ai = aiArticleService.getOrProcess(articleId)
-        return toDto(ai)
+    fun getOrProcess(
+        @PathVariable articleId: Long,
+        @Parameter(
+            description = "指定文章輸出的難度等級（Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
+            schema = Schema(implementation = DifficultyLevel::class)
+        )
+        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?,
+        @Parameter(description = "原文語言碼（預設 en）")
+        @RequestParam(name = "fromLanguage", defaultValue = "en") fromLanguage: String,
+        @Parameter(description = "目標語言碼（預設 zh-TW）")
+        @RequestParam(name = "toLanguage", defaultValue = "zh-TW") toLanguage: String
+    ): AiArticleDetail {
+        return aiArticleService.getOrProcessDto(articleId, difficulty, fromLanguage, toLanguage)
     }
 
     /**
@@ -83,24 +110,47 @@ class AiArticleController(
         summary = "隨機取得 n 篇 AI 文章",
         description = "可選擇以來源/區塊過濾。若庫內沒有資料則回傳空陣列，不會即時解析。"
     )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "成功隨機取得已處理文章",
+                content = [Content(mediaType = "application/json", schema = Schema(implementation = RandomArticlesResponse::class))]
+            )
+        ]
+    )
     fun random(
         @Parameter(description = "文章數量（最多 20）")
         @RequestParam(name = "count", defaultValue = "5") count: Int,
         @Parameter(description = "來源過濾，例如 BBC、CNN")
         @RequestParam(name = "source", required = false) source: String?,
         @Parameter(description = "區塊過濾，例如 news、world、technology")
-        @RequestParam(name = "section", required = false) section: String?
-    ): Map<String, Any> {
+        @RequestParam(name = "section", required = false) section: String?,
+        @Parameter(
+            description = "指定文章輸出的難度等級（Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
+            schema = Schema(implementation = DifficultyLevel::class)
+        )
+        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?,
+        @Parameter(description = "原文語言碼（預設 en）")
+        @RequestParam(name = "fromLanguage", defaultValue = "en") fromLanguage: String,
+        @Parameter(description = "目標語言碼（預設 zh-TW）")
+        @RequestParam(name = "toLanguage", defaultValue = "zh-TW") toLanguage: String
+    ): RandomArticlesResponse {
         val limited = kotlin.math.min(count, 20)
-        val (aiList, total) = aiArticleService.random(limited, source, section)
-        val items = aiList.map { toDto(it) }
-        return mapOf(
-            "message" to "success",
-            "requestedCount" to limited,
-            "actualCount" to items.count(),
-            "totalAvailable" to total,
-            "filters" to mapOf("source" to source, "section" to section),
-            "articles" to items
+        val (aiList, total) = aiArticleService.random(limited, source, section, difficulty, fromLanguage, toLanguage)
+        val items = aiList.map { aiArticleService.toDetail(it, difficulty, fromLanguage, toLanguage) }
+        return RandomArticlesResponse(
+            requestedCount = limited,
+            actualCount = items.count(),
+            totalAvailable = total,
+            filters = RandomArticlesFilters(
+                source = source,
+                section = section,
+                difficulty = difficulty,
+                fromLanguage = fromLanguage,
+                toLanguage = toLanguage
+            ),
+            articles = items
         )
     }
 
@@ -117,7 +167,23 @@ class AiArticleController(
     @GetMapping("/random-with-processing")
     @Operation(
         summary = "隨機取得 n 篇文章並自動進行 AI 處理",
-        description = "從資料庫隨機抽取文章，若尚未經 AI 處理則自動處理並儲存。可選擇以來源/區塊過濾。"
+        description = "從資料庫隨機抽取文章，若尚未經 AI 處理則自動處理並儲存。可選擇以來源/區塊過濾，並可指定 AI 輸出的難度等級。"
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "成功取得或處理隨機文章",
+                content = [
+                    Content(
+                        mediaType = "application/json",
+                        schema = Schema(implementation = RandomWithProcessingResponse::class)
+                    )
+                ]
+            ),
+            ApiResponse(responseCode = "429", description = "AI 配額或速率限制"),
+            ApiResponse(responseCode = "500", description = "伺服器處理錯誤")
+        ]
     )
     fun randomWithProcessing(
         @Parameter(description = "文章數量（最多 20）")
@@ -125,56 +191,34 @@ class AiArticleController(
         @Parameter(description = "來源過濾，例如 BBC、CNN")
         @RequestParam(name = "source", required = false) source: String?,
         @Parameter(description = "區塊過濾，例如 news、world、technology")
-        @RequestParam(name = "section", required = false) section: String?
-    ): Map<String, Any> {
-        val limited = kotlin.math.min(count, 20)
-        val (aiList, total, processedCount) = aiArticleService.randomWithProcessing(limited, source, section)
-        val items = aiList.map { toDto(it) }
-        return mapOf(
-            "message" to "success",
-            "requestedCount" to limited,
-            "actualCount" to items.count(),
-            "totalAvailable" to total,
-            "processedCount" to processedCount,
-            "filters" to mapOf("source" to source, "section" to section),
-            "articles" to items
+        @RequestParam(name = "section", required = false) section: String?,
+        @Parameter(
+            description = "指定文章輸出的難度等級（Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
+            schema = Schema(implementation = DifficultyLevel::class)
         )
-    }
-
-    /**
-     * 隨機取得 n 篇文章並自動進行 AI 處理與重寫
-     *
-     * 若文章尚未經 AI 處理，會自動進行處理並儲存
-     *
-     * @param count 文章數量（最多 20）
-     * @param source 來源過濾，例如 BBC、CNN
-     * @param section 區塊過濾，例如 news、world、technology
-     * @return 隨機 AI 文章清單與統計資訊
-     */
-    @GetMapping("/random-with-rewrite-processing")
-    @Operation(
-        summary = "隨機取得 n 篇文章並自動進行 AI 處理與重寫",
-        description = "從資料庫隨機抽取文章，若尚未經 AI 處理則自動處理並儲存。可選擇以來源/區塊過濾。"
-    )
-    fun randomWithRewriteProcessing(
-        @Parameter(description = "文章數量（最多 20）")
-        @RequestParam(name = "count", defaultValue = "5") count: Int,
-        @Parameter(description = "來源過濾，例如 BBC、CNN")
-        @RequestParam(name = "source", required = false) source: String?,
-        @Parameter(description = "區塊過濾，例如 news、world、technology")
-        @RequestParam(name = "section", required = false) section: String?
-    ): Map<String, Any> {
+        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?,
+        @Parameter(description = "原文語言碼（預設 en）")
+        @RequestParam(name = "fromLanguage", defaultValue = "en") fromLanguage: String,
+        @Parameter(description = "目標語言碼（預設 zh-TW）")
+        @RequestParam(name = "toLanguage", defaultValue = "zh-TW") toLanguage: String
+    ): RandomWithProcessingResponse {
         val limited = kotlin.math.min(count, 20)
-        val (aiList, total, processedCount) = aiArticleService.randomWithRewriteAndProcessing(limited, source, section)
-        val items = aiList.map { toDto(it) }
-        return mapOf(
-            "message" to "success",
-            "requestedCount" to limited,
-            "actualCount" to items.count(),
-            "totalAvailable" to total,
-            "processedCount" to processedCount,
-            "filters" to mapOf("source" to source, "section" to section),
-            "articles" to items
+        val (aiList, total, processedCount) =
+            aiArticleService.randomWithRewriteAndProcessing(limited, source, section, difficulty, fromLanguage, toLanguage)
+        val items = aiList.map { aiArticleService.toDetail(it, difficulty, fromLanguage, toLanguage) }
+        return RandomWithProcessingResponse(
+            requestedCount = limited,
+            actualCount = items.count(),
+            totalAvailable = total,
+            processedCount = processedCount,
+            filters = RandomArticlesFilters(
+                source = source,
+                section = section,
+                difficulty = difficulty,
+                fromLanguage = fromLanguage,
+                toLanguage = toLanguage
+            ),
+            articles = items
         )
     }
 
@@ -191,29 +235,60 @@ class AiArticleController(
         summary = "[測試] 查看 AI 原始 JSON",
         description = "調試用端點，檢視 AI 產生的原始 JSON 資料（僅限非生產環境）"
     )
-    fun debugRawJson(@PathVariable id: Long): ResponseEntity<Map<String, Any>> {
+    fun debugRawJson(@PathVariable id: Long): ResponseEntity<Map<String, Any?>> {
         return try {
             val aiArticle = aiArticleService.listProcessed(0, 1000).content
                 .find { it.article.id == id }
                 ?: return ResponseEntity.notFound().build()
 
-            ResponseEntity.ok(
-                mapOf(
-                    "articleId" to id,
-                    "explanationJson" to (aiArticle.explanation ?: "null"),
-                    "explanationLength" to (aiArticle.explanation?.length ?: 0),
-                    "hasExplanation" to !aiArticle.explanation.isNullOrBlank(),
-                    "titleZh" to aiArticle.titleZh,
-                    "cleanedTextLength" to (aiArticle.cleanedText?.length ?: 0)
-                ) as Map<String, Any>
+            val contentSummary = aiArticle.views.associate { view ->
+                val key = "${view.fromLanguage}->${view.toLanguage}:${view.difficulty.name}"
+                val hasExplanation =
+                    view.vocabularyItems.isNotEmpty() ||
+                        view.grammarItems.isNotEmpty() ||
+                        view.sentencePatternItems.isNotEmpty() ||
+                        view.phraseIdiomItems.isNotEmpty() ||
+                        view.comprehensionQuestions.isNotEmpty() ||
+                        !view.legacyExplanationJson.isNullOrBlank()
+
+                key to mapOf(
+                    "difficulty" to view.difficulty.name,
+                    "fromLanguage" to view.fromLanguage,
+                    "toLanguage" to view.toLanguage,
+                    "hasExplanation" to hasExplanation,
+                    "cleanedTextFromLength" to (view.cleanedTextFrom?.length ?: 0),
+                    "cleanedTextToLength" to (view.cleanedTextTo?.length ?: 0)
+                )
+            }
+
+            val representativeTitle = aiArticle.views
+                .firstOrNull { it.toLanguage.equals("zh-TW", ignoreCase = true) && !it.titleTo.isNullOrBlank() }
+                ?.titleTo
+                ?: aiArticle.views.firstOrNull { !it.titleTo.isNullOrBlank() }?.titleTo
+                ?: aiArticle.views.firstOrNull { !it.titleFrom.isNullOrBlank() }?.titleFrom
+                ?: aiArticle.title
+                ?: aiArticle.article.title
+
+            val responseBody: Map<String, Any?> = mapOf(
+                "articleId" to id,
+                "titleZh" to representativeTitle,
+                "availableViews" to aiArticle.views.map {
+                    mapOf(
+                        "difficulty" to it.difficulty.name,
+                        "fromLanguage" to it.fromLanguage,
+                        "toLanguage" to it.toLanguage
+                    )
+                },
+                "contentSummary" to contentSummary
             )
+
+            ResponseEntity.ok(responseBody)
         } catch (e: Exception) {
-            ResponseEntity.status(500).body(
-                mapOf(
-                    "error" to e.message,
-                    "errorType" to e.javaClass.simpleName
-                ) as Map<String, Any>
+            val errorBody: Map<String, Any?> = mapOf(
+                "error" to (e.message ?: "Unknown error"),
+                "errorType" to e.javaClass.simpleName
             )
+            ResponseEntity.status(500).body(errorBody)
         }
     }
 
@@ -230,16 +305,23 @@ class AiArticleController(
         summary = "[測試] 重新處理並診斷",
         description = "測試用端點，重新處理文章並回傳詳細診斷信息（僅限非生產環境）"
     )
-    fun reprocessArticleWithDebug(@PathVariable id: Long): ResponseEntity<Map<String, Any>> {
+    fun reprocessArticleWithDebug(
+        @PathVariable id: Long,
+        @RequestParam(name = "difficulty", required = false) difficulty: DifficultyLevel?,
+        @RequestParam(name = "fromLanguage", defaultValue = "en") fromLanguage: String,
+        @RequestParam(name = "toLanguage", defaultValue = "zh-TW") toLanguage: String
+    ): ResponseEntity<Map<String, Any?>> {
         return try {
-            val result = aiArticleService.processAndOverwriteDto(id)
-            ResponseEntity.ok(
-                mapOf(
-                    "success" to true,
-                    "articleId" to id,
-                    "hasExplanation" to (result.explanation != null),
-                    "explanationFields" to if (result.explanation != null) {
-                        val exp = result.explanation
+            val result = aiArticleService.processAndOverwriteDto(id, difficulty, fromLanguage, toLanguage)
+            val content = result.content
+            val explanation = content?.explanation
+            val responseBody = buildMap<String, Any?> {
+                put("success", true)
+                put("articleId", id)
+                put("hasExplanation", explanation != null)
+                explanation?.let { exp ->
+                    put(
+                        "explanationFields",
                         mapOf(
                             "hasVocabulary" to (exp.vocabulary?.isNotEmpty() == true),
                             "hasGrammar" to (exp.grammar?.isNotEmpty() == true),
@@ -250,22 +332,25 @@ class AiArticleController(
                             "grammarCount" to (exp.grammar?.size ?: 0),
                             "mcqCount" to (exp.comprehensionMcq?.size ?: 0)
                         )
-                    } else null,
-                    "message" to "文章已重新處理",
-                    "titleZh" to result.titleZh,
-                    "cleanedTextLength" to (result.cleanedText?.length ?: 0),
-                    "cleanedTextZhLength" to (result.cleanedTextZh?.length ?: 0)
-                ) as Map<String, Any>
-            )
+                    )
+                }
+                put("message", "文章已重新處理")
+                put("titleZh", result.titleZh)
+                put("fromLanguage", result.fromLanguage)
+                put("toLanguage", result.toLanguage)
+                put("cleanedTextFromLength", content?.cleanedTextFrom?.length ?: 0)
+                put("cleanedTextToLength", content?.cleanedTextTo?.length ?: 0)
+            }
+
+            ResponseEntity.ok(responseBody)
         } catch (e: Exception) {
-            ResponseEntity.status(500).body(
-                mapOf(
-                    "success" to false,
-                    "articleId" to id,
-                    "error" to e.message,
-                    "errorType" to e.javaClass.simpleName
-                ) as Map<String, Any>
+            val errorBody: Map<String, Any?> = mapOf(
+                "success" to false,
+                "articleId" to id,
+                "error" to (e.message ?: "Unknown error"),
+                "errorType" to e.javaClass.simpleName
             )
+            ResponseEntity.status(500).body(errorBody)
         }
     }
 
@@ -282,75 +367,36 @@ class AiArticleController(
         summary = "[測試] 測試 JSON 解析",
         description = "測試用端點，驗證 Explanation JSON 的解析功能（僅限非生產環境）"
     )
-    fun testJsonParsing(@RequestBody jsonString: String): ResponseEntity<Map<String, Any>> {
+    fun testJsonParsing(@RequestBody jsonString: String): ResponseEntity<Map<String, Any?>> {
         return try {
             val explanation = objectMapper.readValue(jsonString, Explanation::class.java)
-            ResponseEntity.ok(
-                mapOf(
-                    "success" to true,
-                    "vocabularyCount" to (explanation.vocabulary?.size ?: 0),
-                    "grammarCount" to (explanation.grammar?.size ?: 0),
-                    "sentencePatternsCount" to (explanation.sentencePatterns?.size ?: 0),
-                    "phrasesIdiomsCount" to (explanation.phrasesIdioms?.size ?: 0),
-                    "comprehensionMcqCount" to (explanation.comprehensionMcq?.size ?: 0),
-                    "hasCompleteStructure" to (
-                            explanation.vocabulary != null &&
-                                    explanation.grammar != null &&
-                                    explanation.sentencePatterns != null &&
-                                    explanation.phrasesIdioms != null &&
-                                    explanation.comprehensionMcq != null
-                            ),
-                    "parsedExplanation" to explanation
-                ) as Map<String, Any>
+            val responseBody: Map<String, Any?> = mapOf(
+                "success" to true,
+                "vocabularyCount" to (explanation.vocabulary?.size ?: 0),
+                "grammarCount" to (explanation.grammar?.size ?: 0),
+                "sentencePatternsCount" to (explanation.sentencePatterns?.size ?: 0),
+                "phrasesIdiomsCount" to (explanation.phrasesIdioms?.size ?: 0),
+                "comprehensionMcqCount" to (explanation.comprehensionMcq?.size ?: 0),
+                "hasCompleteStructure" to (
+                    explanation.vocabulary != null &&
+                        explanation.grammar != null &&
+                        explanation.sentencePatterns != null &&
+                        explanation.phrasesIdioms != null &&
+                        explanation.comprehensionMcq != null
+                    ),
+                "parsedExplanation" to explanation
             )
+
+            ResponseEntity.ok(responseBody)
         } catch (e: Exception) {
-            ResponseEntity.status(400).body(
-                mapOf(
-                    "success" to false,
-                    "error" to e.message,
-                    "errorType" to e.javaClass.simpleName,
-                    "detailedMessage" to e.toString()
-                ) as Map<String, Any>
+            val errorBody: Map<String, Any?> = mapOf(
+                "success" to false,
+                "error" to (e.message ?: "Unknown error"),
+                "errorType" to e.javaClass.simpleName,
+                "detailedMessage" to e.toString()
             )
+            ResponseEntity.status(400).body(errorBody)
         }
     }
 
-    /**
-     * 將 ArticleAi 實體轉換為 DTO
-     *
-     * @param ai AI 文章實體
-     * @return AI 文章詳細資料 DTO
-     */
-    private fun toDto(ai: ArticleAi): AiArticleDetail {
-        val a = ai.article
-        val articleId = requireNotNull(a.id) { "Article must have an ID" }
-        val explanationObj: Explanation? = ai.explanation?.let { explanationJson ->
-            try {
-                val parsed = objectMapper.readValue(explanationJson, Explanation::class.java)
-                parsed
-            } catch (e: Exception) {
-                // 記錄解析失敗，但返回 null 而不是空對象
-                logger.error("Failed to parse explanation in controller for article ${ai.article.id}: ${e.message}")
-                null
-            }
-        }
-
-        return AiArticleDetail(
-            id = articleId,
-            sourceName = a.source.name,
-            section = a.source.section,
-            title = a.title,
-            publishedAt = a.publishedAt?.toString(),
-            originalUrl = a.originalUrl,
-            contentHtml = a.contentHtml,
-            optimizedHtml = ai.optimizedHtml,
-            optimizedZhHtml = ai.optimizedZhHtml,
-            titleZh = ai.titleZh,
-            summaryEn = ai.summaryEn,
-            summaryZh = ai.summaryZh,
-            cleanedText = ai.cleanedText,
-            cleanedTextZh = ai.cleanedTextZh,
-            explanation = explanationObj
-        )
-    }
 }

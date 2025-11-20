@@ -2,6 +2,7 @@ package com.linli.news.service
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.linli.news.model.DifficultyLevel
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.MediaType
@@ -25,7 +26,7 @@ class AiArticleProcessorService(
     @param:Value("\${openai.api-key:}") private val apiKey: String,
     @param:Value("\${openai.base-url:https://api.openai.com/v1}") private val baseUrl: String,
     @param:Value("\${openai.model:gpt-5-mini}") private val model: String,
-    @param:Value("\${openai.max-tokens:12000}") private val maxTokens: Int,
+    @param:Value("\${openai.max-tokens:16000}") private val maxTokens: Int,
 ) {
     private val logger = LoggerFactory.getLogger(AiArticleProcessorService::class.java)
     private val objectMapper = ObjectMapper()
@@ -132,14 +133,14 @@ class AiArticleProcessorService(
         return root to content
     }
 
-    fun process(title: String?, textContent: String?): JsonNode {
+    fun process(title: String?, textContent: String?, fromLanguage: String, toLanguage: String): JsonNode {
         require(apiKey.isNotBlank()) { "OPENAI_API_KEY / openai.api-key is required" }
         if (textContent.isNullOrBlank()) {
             throw IllegalArgumentException("Article text content is empty; cannot process with AI")
         }
 
-        val systemPrompt = AiArticlePrompts.processSystemPrompt()
-        val userPrompt = AiArticlePrompts.processUserPrompt(title, textContent)
+        val systemPrompt = AiArticlePrompts.processSystemPrompt(fromLanguage, toLanguage)
+        val userPrompt = AiArticlePrompts.processUserPrompt(title, textContent, fromLanguage, toLanguage)
 
         val body = buildJsonModeBody(
             systemPrompt = systemPrompt,
@@ -188,15 +189,16 @@ class AiArticleProcessorService(
     fun optimizeHtml(
         title: String?,
         originalHtml: String,
-        targetLanguage: HtmlOptimizationLanguage = HtmlOptimizationLanguage.ENGLISH
+        fromLanguage: String,
+        toLanguage: String
     ): HtmlOptimizationResult {
         require(apiKey.isNotBlank()) { "OPENAI_API_KEY / openai.api-key is required" }
         if (originalHtml.isBlank()) {
             throw IllegalArgumentException("Article HTML content is empty; cannot optimize with AI")
         }
 
-        val systemPrompt = AiArticlePrompts.optimizeHtmlSystemPrompt()
-        val userPrompt = AiArticlePrompts.optimizeHtmlUserPrompt(title, originalHtml)
+        val systemPrompt = AiArticlePrompts.optimizeHtmlSystemPrompt(fromLanguage, toLanguage)
+        val userPrompt = AiArticlePrompts.optimizeHtmlUserPrompt(title, originalHtml, fromLanguage, toLanguage)
 
         val body = buildJsonModeBody(
             systemPrompt = systemPrompt,
@@ -212,116 +214,71 @@ class AiArticleProcessorService(
         logger.debug("[AI] optimizeHtml parsed JSON (first 400 chars): ${content.take(400)}")
 
         val optimizedNode = objectMapper.readTree(content)
-        val optimizedHtml = optimizedNode.path("optimized_html").asText(null)
+        val optimizedHtml = optimizedNode.path("optimized_html_from").asText(
+            optimizedNode.path("optimized_html").asText(null)
+        )
         if (optimizedHtml.isNullOrBlank()) {
-            logger.error("[AI] optimizeHtml JSON 缺少 optimized_html 欄位或為空，target=${targetLanguage}")
+            logger.error("[AI] optimizeHtml JSON 缺少 optimized_html_from 欄位或為空，lang=$fromLanguage")
             throw IllegalStateException("AI 回應缺少 optimized_html 欄位")
         }
 
-        val optimizedZhHtml = optimizedNode.path("optimized_zh_html").asText(null)
+        val optimizedZhHtml = optimizedNode.path("optimized_html_to").asText(
+            optimizedNode.path("optimized_zh_html").asText(null)
+        )
         return HtmlOptimizationResult(
-            optimizedHtml = optimizedHtml,
-            optimizedZhHtml = optimizedZhHtml
+            optimizedHtmlFrom = optimizedHtml,
+            optimizedHtmlTo = optimizedZhHtml
         )
     }
 
     /**
-     * Stage 1: 重寫文章為400-600字的托福難度短文
+     * Stage 1: 重寫文章
      *
      * @param title 文章標題
      * @param originalHtml 原始HTML內容
      * @return 重寫後的結果，包含優化後的HTML、清理後的文本等
      */
-    fun rewriteStage1(title: String?, originalHtml: String): JsonNode {
+    fun rewriteStage1(
+        difficulty: DifficultyLevel,
+        title: String?,
+        originalHtml: String,
+        fromLanguage: String,
+        toLanguage: String
+    ): JsonNode {
         require(apiKey.isNotBlank()) { "OPENAI_API_KEY / openai.api-key is required" }
         if (originalHtml.isBlank()) {
             throw IllegalArgumentException("Article HTML content is empty; cannot process with AI")
         }
 
-        val maxAttempts = 3
-        var lastResult: JsonNode? = null
-        var lastWordCount = 0
-        var lastException: Exception? = null
+        val systemPrompt = AiArticlePrompts.rewriteStage1SystemPrompt(difficulty, fromLanguage, toLanguage)
+        val userPrompt =
+            AiArticlePrompts.rewriteStage1UserPrompt(difficulty, title, originalHtml, fromLanguage, toLanguage)
 
-        for (attempt in 0 until maxAttempts) {
-            try {
-                // 第一次使用原始提示詞，後續嘗試時增加字數相關指示
-                val additionalInstructions = if (attempt == 0) "" else """
-                    |目前的文章約有 $lastWordCount 個英文單字，請在不改變主題與結構的前提下，
-                    |將原本的文章盡可能地擴寫成更多字。
-                    |
-                """.trimMargin()
+        val body = buildJsonModeBody(
+            systemPrompt = systemPrompt,
+            userPrompt = userPrompt,
+            temperature = 0.2
+        )
 
-                val systemPrompt = AiArticlePrompts.rewriteStage1SystemPrompt()
-                val userPrompt = AiArticlePrompts.rewriteStage1UserPrompt(title, originalHtml) + additionalInstructions
+        logger.info("[AI] Requesting OpenAI model='${model}' for rewriteStage1 (title='${title ?: "(no title)"}')")
+        val responseStr = postChatCompletions(body, operation = "rewriteStage1")
+        logger.info("[AI] Raw response for rewriteStage1 (first 400 chars): ${responseStr.take(400)}")
 
-                val body = buildJsonModeBody(
-                    systemPrompt = systemPrompt,
-                    userPrompt = userPrompt,
-                    temperature = 0.2
-                )
+        val (_, content) = extractContentFromResponse(responseStr, "rewriteStage1")
+        logger.debug("[AI] rewriteStage1 parsed JSON (first 400 chars): ${content.take(400)}")
 
-                logger.info("[AI] Requesting OpenAI model='${model}' for rewriteStage1 (attempt=${attempt + 1}/${maxAttempts}, title='${title ?: "(no title)"}')")
-                if (attempt > 0) {
-                    logger.debug("[AI] rewriteStage1 retry with additional instructions: $additionalInstructions")
-                }
-
-                val responseStr = postChatCompletions(body, operation = "rewriteStage1")
-                logger.info("[AI] Raw response for rewriteStage1 (first 400 chars): ${responseStr.take(400)}")
-
-                val (_, content) = extractContentFromResponse(responseStr, "rewriteStage1")
-                logger.debug("[AI] rewriteStage1 parsed JSON (first 400 chars): ${content.take(400)}")
-
-                // 先嘗試解析 JSON
-                val result = try {
-                    objectMapper.readTree(content)
-                } catch (e: Exception) {
-                    logger.error("[AI] Failed to parse JSON response from rewriteStage1. Content length: ${content.length}")
-                    logger.error("[AI] JSON parse error: ${e.message}")
-                    logger.error("[AI] Full content: $content")
-                    throw IllegalStateException("AI rewriteStage1回應不是有效的 JSON 格式: ${e.message}")
-                }
-
-                // 保存當前結果和字數
-                lastResult = result
-                val cleanedText = result.path("cleaned_text").asText("")
-                lastWordCount = countEnglishWords(cleanedText)
-                val aiReportedCount = result.path("word_count").asInt(-1)
-
-                // 驗證字數和段落
-                logger.info("[AI] Validating rewriteStage1 result: wordCount=$lastWordCount, aiReported=$aiReportedCount")
-                if (!validateRewriteAndProcessResult(result)) {
-                    logger.warn("[AI] rewriteStage1 attempt ${attempt + 1}/$maxAttempts failed validation: wordCount=$lastWordCount (not in 400-600 range) or not enough paragraphs")
-                    // 如果不是最後一次嘗試，則繼續下一次
-                    if (attempt < maxAttempts - 1) {
-                        continue
-                    } else {
-                        throw IllegalStateException("AI rewriteStage1 回應不符合字數或段落要求，最後字數: $lastWordCount")
-                    }
-                }
-
-                logger.info("[AI] rewriteStage1 success on attempt ${attempt + 1}/$maxAttempts, wordCount=$lastWordCount")
-                return result
-
-            } catch (e: Exception) {
-                lastException = e
-                if (e is AiQuotaException || e is IllegalArgumentException) {
-                    // 這些例外不需要重試
-                    throw e
-                }
-                // 其他例外，如果不是最後一次嘗試，則繼續
-                if (attempt < maxAttempts - 1) {
-                    logger.warn("[AI] rewriteStage1 attempt ${attempt + 1}/$maxAttempts failed: ${e.message}")
-                    continue
-                } else {
-                    throw e
-                }
-            }
+        // 解析 JSON 並直接返回，不進行驗證
+        val result = try {
+            objectMapper.readTree(content)
+        } catch (e: Exception) {
+            logger.error("[AI] Failed to parse JSON response from rewriteStage1. Content length: ${content.length}")
+            logger.error("[AI] JSON parse error: ${e.message}")
+            logger.error("[AI] Full content: $content")
+            throw IllegalStateException("AI rewriteStage1回應不是有效的 JSON 格式: ${e.message}")
         }
 
-        // 如果到達這裡，表示所有嘗試都失敗了
-        throw lastException
-            ?: IllegalStateException("rewriteStage1 無法在 $maxAttempts 次內達到 400–600 字（最後一次 $lastWordCount 字）")
+        logger.info("[AI] rewriteStage1 completed successfully")
+        return result
     }
 
     /**
@@ -331,14 +288,21 @@ class AiArticleProcessorService(
      * @param rewrittenText 重寫後的文本
      * @return 教學解析結果，包含字彙、文法、題目等
      */
-    fun teachingStage2(title: String?, rewrittenText: String): JsonNode {
+    fun teachingStage2(
+        difficulty: DifficultyLevel,
+        title: String?,
+        rewrittenText: String,
+        fromLanguage: String,
+        toLanguage: String
+    ): JsonNode {
         require(apiKey.isNotBlank()) { "OPENAI_API_KEY / openai.api-key is required" }
         if (rewrittenText.isBlank()) {
             throw IllegalArgumentException("Rewritten text is empty; cannot generate teaching materials")
         }
 
-        val systemPrompt = AiArticlePrompts.teachingStage2SystemPrompt()
-        val userPrompt = AiArticlePrompts.teachingStage2UserPrompt(title ?: "(no title)", rewrittenText)
+        val systemPrompt = AiArticlePrompts.teachingStage2SystemPrompt(difficulty, fromLanguage, toLanguage)
+        val userPrompt = AiArticlePrompts
+            .teachingStage2UserPrompt(difficulty, title ?: "(no title)", rewrittenText, fromLanguage, toLanguage)
 
         val body = buildJsonModeBody(
             systemPrompt = systemPrompt,
@@ -367,152 +331,4 @@ class AiArticleProcessorService(
         }
     }
 
-    /**
-     * 將文章重寫為 400~600 字的托福難度短文，並在單一請求中完成所有 AI 處理。
-     *
-     * 流程：
-     * 1. 將文章標題與原始 HTML 內容送交 AI
-     * 2. 請 AI 重寫為 400~600 字的托福難度短文（英文與中文版本）
-     * 3. 產生標題、摘要、清理後純文字內容（中英文）
-     * 4. 產生詳細的教學解說（字彙、文法、句型、題目等）
-     *
-     * @param title 文章標題
-     * @param originalHtml 原始 HTML 內容
-     * @return 包含所有處理結果的 JSON 物件
-     */
-    @Deprecated("Use rewriteStage1 and teachingStage2 instead for a two-stage approach")
-    fun rewriteAndProcess(title: String?, originalHtml: String): JsonNode {
-        require(apiKey.isNotBlank()) { "OPENAI_API_KEY / openai.api-key is required" }
-        if (originalHtml.isBlank()) {
-            throw IllegalArgumentException("Article HTML content is empty; cannot process with AI")
-        }
-
-        val stage1Result = rewriteStage1(title, originalHtml)
-        val rewrittenText = stage1Result.path("cleaned_text").asText()
-        val teachingResult = teachingStage2(title, rewrittenText)
-
-        // Build a new ObjectNode to properly combine the two results
-        val combinedResult = objectMapper.createObjectNode()
-        stage1Result.fields().forEach { (key, value) ->
-            combinedResult.set<JsonNode>(key, value)
-        }
-        // If teaching_result has explanation, extract it to top-level
-        val explanationNode = teachingResult.path("explanation")
-        if (!explanationNode.isMissingNode && !explanationNode.isNull) {
-            combinedResult.set<JsonNode>("explanation", explanationNode)
-        }
-        combinedResult.set<JsonNode>("teaching_result", teachingResult)
-        return combinedResult
-    }
-
-    /**
-     * 計算英文文章的字數
-     *
-     * @param text 文章內容
-     * @return 英文單字數量
-     */
-    private fun countEnglishWords(text: String): Int {
-        if (text.isBlank()) return 0
-
-        // 1. 先移除所有HTML 標籤
-        val cleanedFromHtml = text.replace(Regex("<[^>]*>"), " ")
-
-        // 2. 檢查是否包含 Unicode 編碼的字元 (\uXXXX)
-        val normalizedText = if (cleanedFromHtml.contains("\\u")) {
-            try {
-                val unescaped = cleanedFromHtml.replace(Regex("\\\\u([0-9a-fA-F]{4})"), { result ->
-                    val hex = result.groupValues[1]
-                    val code = Integer.parseInt(hex, 16)
-                    String(Character.toChars(code))
-                })
-                unescaped
-            } catch (e: Exception) {
-                // 如遇到錯誤，直接使用原始內容
-                cleanedFromHtml
-            }
-        } else {
-            cleanedFromHtml
-        }
-
-        // 3. 移除非英文字符和標點符號
-        return normalizedText
-            .replace(Regex("[^\\p{L}\\p{N}\\s]"), " ")  // 移除非英文字符和標點符號
-            .trim()
-            .split(Regex("\\s+"))
-            .filter { word ->
-                // 只保留包含至少一個英文字符的單詞
-                word.any { ch -> ch in 'a'..'z' || ch in 'A'..'Z' }
-            }
-            .count()
-    }
-
-    /**
-     * 檢查 HTML 是否有足夠的段落
-     *
-     * @param html HTML 內容
-     * @param minParagraphs 最少段落數量
-     * @return true 如果段落數量足夠，否則 false
-     */
-    private fun hasEnoughParagraphs(html: String?, minParagraphs: Int = 4): Boolean {
-        if (html == null || html.isBlank()) {
-            return false
-        }
-        // 使用更複雜的正則表達式來匹配段落
-        val paragraphPattern = Regex("<p[^>]*>.*?</p>", RegexOption.DOT_MATCHES_ALL)
-        val paragraphs = paragraphPattern.findAll(html).toList()
-        val paragraphCount = paragraphs.size
-
-        // 檢查段落是否包含實際內容
-        val nonEmptyParagraphs = paragraphs.count {
-            // 移除 HTML 標籤，檢查段落是否包含至少兩個單詞
-            val content = it.value.replace(Regex("<[^>]*>"), "")
-            content.trim().split(Regex("\\s+")).size >= 2
-        }
-
-        logger.info("[AI] Found $paragraphCount paragraphs in HTML ($nonEmptyParagraphs non-empty with content)")
-        return nonEmptyParagraphs >= minParagraphs
-    }
-
-    /**
-     * 驗證 AI 重寫和處理的結果
-     *
-     * @param result AI 回應的 JSON 結果
-     * @return true 如果結果有效，否則 false
-     */
-    private fun validateRewriteAndProcessResult(result: JsonNode): Boolean {
-        try {
-            // 1. 檢查字數
-            val cleanedText = result.path("cleaned_text").asText("")
-            val aiReported = result.path("word_count").asInt(-1)
-            if (aiReported > 0) {
-                logger.debug("[AI] AI reported word count: $aiReported")
-            }
-            val wordCount = countEnglishWords(cleanedText)
-            logger.debug("[AI] Calculated word count from cleaned_text: $wordCount")
-            logger.info("[AI] Validating word count: $wordCount (expected range: 400-600)")
-
-            val validWordCount = wordCount in 400..600
-            if (!validWordCount) {
-                logger.warn("[AI] Article word count = $wordCount, not in required range 400..600 (AI reported: $aiReported)")
-                return false
-            }
-
-            // 2. 檢查段落數量
-            val optimizedHtml = result.path("optimized_html").asText("")
-            logger.info("[AI] Validating paragraph count in optimized HTML")
-
-            val hasEnoughParagraphs = hasEnoughParagraphs(optimizedHtml)
-            if (!hasEnoughParagraphs) {
-                logger.warn("[AI] Article does not have enough paragraphs (minimum 4 required)")
-                return false
-            }
-
-            // 所有驗證通過
-            logger.info("[AI] Validation successful: word count ($wordCount) and paragraph count meet requirements")
-            return true
-        } catch (e: Exception) {
-            logger.error("[AI] Error validating rewrite results: ${e.message}", e)
-            return false
-        }
-    }
 }

@@ -255,6 +255,27 @@ https://reasoning-compression-marijuana-katrina.trycloudflare.com
 - `GET /api/ai-articles/random` - 隨機取得 n 篇 AI 文章（僅從已處理的文章中抽取）
 - `GET /api/ai-articles/random-with-processing` - 隨機取得 n 篇文章並自動進行 AI 處理（若尚未處理則即時處理）
 
+> 所有 AI 文章端點都支援 `difficulty`、`fromLanguage`、`toLanguage` 查詢參數。若未指定，預設為 `en → zh-TW`。
+
+### AI 視圖與多語資料模型
+
+- `article_ai_view`：每一筆代表「某篇文章 + 語言對 + 難度」。欄位包含 `from_lang`、`to_lang`、`difficulty`、雙語標題／摘要、`optimized_html_from/to`、`cleaned_text_from/to` 以及備援的 `legacy_explanation_json`。
+- 解說資料拆為多張表並以 `article_ai_view_id` 外鍵串接：
+  - `ai_vocabulary_item`（雙語單字與例句）
+  - `ai_grammar_item`
+  - `ai_sentence_pattern_item`
+  - `ai_phrase_idiom_item`
+  - `ai_comprehension_mcq` + `ai_comprehension_option`
+- 每張子表都保留 `sort_order` 以維持 JSON 順序，也可依語言 pair 快速查詢。
+- Flyway V14/V15 將舊的 `article_ai_content` 與 JSON 欄位遷移至上述結構，並把舊表重新命名為 `article_ai_content_legacy` 作為回滾備援。
+
+#### 新增語言對（例如 fr → en）的建議流程
+
+1. 確保文章已存在並具備全文 HTML。
+2. 呼叫 `POST /api/articles/{id}/ai/process?fromLanguage=fr&toLanguage=en&difficulty=NORMAL` 讓 AI 產出新的視圖，或使用 `/api/ai-articles/random-with-processing` 搭配相同語言參數批次處理。
+3. 回傳結果會在 `availableViews` 中列出 `fr → en` 視圖，前端可再用 `difficulty` 過濾。
+4. 若需回滾，可將 `article_ai_content_legacy` 內容重新塞回 `article_ai_view`（或重新跑一次處理流程）。
+
 ---
 
 ## 主要功能
@@ -669,10 +690,17 @@ fun `randomWithProcessing 應該自動處理未處理的文章`() {
     every { articleRepository.findAll() } returns listOf(article)
     every { aiProcessor.process(...) } returns aiResponse
     
-    val (result, total, processedCount) = service.randomWithProcessing(1, null, null)
-    
+    val (result, total, processedCount) = service.randomWithProcessing(
+        count = 1,
+        source = null,
+        section = null,
+        difficulty = DifficultyLevel.NORMAL,
+        fromLanguage = "en",
+        toLanguage = "zh-TW"
+    )
+
     assertEquals(1, processedCount)
-    verify(exactly = 1) { aiProcessor.process(any(), any()) }
+    verify(exactly = 1) { aiProcessor.process(any(), any(), any(), any()) }
 }
 
 ### 測試覆蓋範圍

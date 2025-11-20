@@ -3,7 +3,9 @@ package com.linli.news.service
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.linli.news.domain.Article
 import com.linli.news.domain.ArticleAi
+import com.linli.news.domain.ArticleAiView
 import com.linli.news.domain.ArticleSource
+import com.linli.news.model.DifficultyLevel
 import com.linli.news.repository.ArticleAiRepository
 import com.linli.news.repository.ArticleRepository
 import io.mockk.every
@@ -56,7 +58,14 @@ class AiArticleServiceTest {
         val page = PageImpl(listOf(aiArticle1, aiArticle2))
         every { articleAiRepository.findByArticle_Source_Name(any(), any()) } returns page
 
-        val (result, total) = service.random(count = 1, source = "BBC", section = null)
+        val (result, total) = service.random(
+            count = 1,
+            source = "BBC",
+            section = null,
+            difficulty = null,
+            fromLanguage = null,
+            toLanguage = null
+        )
 
         assertEquals(1, result.size)
         assertEquals(2, total)
@@ -71,7 +80,14 @@ class AiArticleServiceTest {
         val emptyPage = PageImpl<ArticleAi>(emptyList())
         every { articleAiRepository.findAll(any<PageRequest>()) } returns emptyPage
 
-        val (result, total) = service.random(count = 5, source = null, section = null)
+        val (result, total) = service.random(
+            count = 5,
+            source = null,
+            section = null,
+            difficulty = null,
+            fromLanguage = null,
+            toLanguage = null
+        )
 
         assertTrue(result.isEmpty())
         assertEquals(0, total)
@@ -89,7 +105,14 @@ class AiArticleServiceTest {
         val page = PageImpl(listOf(aiArticle))
         every { articleAiRepository.findByArticle_Source_Name("BBC", any()) } returns page
 
-        val (result, _) = service.random(count = 10, source = "BBC", section = null)
+        val (result, _) = service.random(
+            count = 10,
+            source = "BBC",
+            section = null,
+            difficulty = null,
+            fromLanguage = null,
+            toLanguage = null
+        )
 
         assertTrue(result.isNotEmpty())
         verify { articleAiRepository.findByArticle_Source_Name("BBC", any()) }
@@ -107,7 +130,14 @@ class AiArticleServiceTest {
         val page = PageImpl(listOf(aiArticle))
         every { articleAiRepository.findByArticle_Source_Section("technology", any()) } returns page
 
-        val (result, _) = service.random(count = 10, source = null, section = "technology")
+        val (result, _) = service.random(
+            count = 10,
+            source = null,
+            section = "technology",
+            difficulty = null,
+            fromLanguage = null,
+            toLanguage = null
+        )
 
         assertTrue(result.isNotEmpty())
         verify { articleAiRepository.findByArticle_Source_Section("technology", any()) }
@@ -131,7 +161,14 @@ class AiArticleServiceTest {
             )
         } returns page
 
-        val (result, _) = service.random(count = 10, source = "BBC", section = "world")
+        val (result, _) = service.random(
+            count = 10,
+            source = "BBC",
+            section = "world",
+            difficulty = null,
+            fromLanguage = null,
+            toLanguage = null
+        )
 
         assertTrue(result.isNotEmpty())
         verify { articleAiRepository.findByArticle_Source_NameAndArticle_Source_Section("BBC", "world", any()) }
@@ -151,17 +188,34 @@ class AiArticleServiceTest {
             contentHtml = "<p>Test content</p>"
         ).apply { id = 1; title = "Title" }
 
-        val existingAi = ArticleAi(article = article).apply { id = 99; titleZh = "已處理" }
+        val existingAi = ArticleAi(article = article).apply {
+            id = 99
+            views.add(
+                ArticleAiView(
+                    articleAi = this,
+                    difficulty = DifficultyLevel.NORMAL,
+                    fromLanguage = "en",
+                    toLanguage = "zh-TW"
+                ).apply { titleTo = "已處理" }
+            )
+        }
 
         every { articleRepository.findAll() } returns listOf(article)
         every { articleAiRepository.findByArticle_Id(1) } returns Optional.of(existingAi)
 
-        val (result, total, processedCount) = service.randomWithProcessing(1, null, null)
+        val (result, total, processedCount) = service.randomWithProcessing(
+            count = 1,
+            source = null,
+            section = null,
+            difficulty = null,
+            fromLanguage = null,
+            toLanguage = null
+        )
 
         assertEquals(1, result.size)
         assertEquals(1, total)
         assertEquals(0, processedCount)
-        verify(exactly = 0) { aiProcessor.process(any<String>(), any<String>()) }
+        verify(exactly = 0) { aiProcessor.process(any(), any(), any(), any()) }
     }
 
     /**
@@ -178,7 +232,14 @@ class AiArticleServiceTest {
 
         every { articleRepository.findAll() } returns listOf(articleWithoutContent)
 
-        val (result, total, processedCount) = service.randomWithProcessing(1, null, null)
+        val (result, total, processedCount) = service.randomWithProcessing(
+            count = 1,
+            source = null,
+            section = null,
+            difficulty = null,
+            fromLanguage = null,
+            toLanguage = null
+        )
 
         assertTrue(result.isEmpty())
         assertEquals(0, total)
@@ -211,24 +272,33 @@ class AiArticleServiceTest {
         every { articleRepository.findAll() } returns listOf(article)
         every { articleAiRepository.findByArticle_Id(1) } returns Optional.empty()
         every { articleRepository.findById(1) } returns Optional.of(article)
-        every { aiProcessor.process("Test Title", any<String>()) } returns aiResponse
+        every { aiProcessor.process("Test Title", any(), any(), any()) } returns aiResponse
         every {
             aiProcessor.optimizeHtml(
                 "Test Title",
+                any(),
+                any(),
                 any()
             )
         } returns HtmlOptimizationResult(
-            optimizedHtml = "<article><p>Optimized</p></article>",
-            optimizedZhHtml = "<article><p>優化內容</p></article>"
+            optimizedHtmlFrom = "<article><p>Optimized</p></article>",
+            optimizedHtmlTo = "<article><p>優化內容</p></article>"
         )
         every { articleAiRepository.save(any<ArticleAi>()) } answers { firstArg() }
 
-        val (result, _, processedCount) = service.randomWithProcessing(1, null, null)
+        val (result, _, processedCount) = service.randomWithProcessing(
+            count = 1,
+            source = null,
+            section = null,
+            difficulty = null,
+            fromLanguage = null,
+            toLanguage = null
+        )
 
         assertEquals(1, processedCount)
         assertTrue(result.isNotEmpty())
-        verify(exactly = 1) { aiProcessor.process(any<String>(), any<String>()) }
-        verify(exactly = 1) { aiProcessor.optimizeHtml(any(), any()) }
+        verify(exactly = 1) { aiProcessor.process(any(), any(), any(), any()) }
+        verify(exactly = 1) { aiProcessor.optimizeHtml(any(), any(), any(), any()) }
     }
 
     /**
@@ -257,18 +327,25 @@ class AiArticleServiceTest {
         every { articleAiRepository.findByArticle_Id(2) } returns Optional.empty()
         every { articleRepository.findById(1) } throws RuntimeException("AI 處理失敗")
         every { articleRepository.findById(2) } returns Optional.of(article2)
-        every { aiProcessor.process("Title 2", any<String>()) } returns aiResponse
+        every { aiProcessor.process("Title 2", any(), any(), any()) } returns aiResponse
         every {
-            aiProcessor.optimizeHtml("Title 2", any())
+            aiProcessor.optimizeHtml("Title 2", any(), any(), any())
         } returns HtmlOptimizationResult(
-            optimizedHtml = "<article><p>Optimized 2</p></article>",
-            optimizedZhHtml = "<article><p>優化內容2</p></article>"
+            optimizedHtmlFrom = "<article><p>Optimized 2</p></article>",
+            optimizedHtmlTo = "<article><p>優化內容2</p></article>"
         )
         every { articleAiRepository.save(any<ArticleAi>()) } answers {
             firstArg<ArticleAi>().apply { id = 100 }
         }
 
-        val (_, total, processedCount) = service.randomWithProcessing(2, null, null)
+        val (_, total, processedCount) = service.randomWithProcessing(
+            count = 2,
+            source = null,
+            section = null,
+            difficulty = null,
+            fromLanguage = null,
+            toLanguage = null
+        )
 
         assertEquals(1, processedCount) // 只有一篇成功處理
         assertEquals(2, total) // 總共有2篇文章可選
@@ -308,7 +385,17 @@ class AiArticleServiceTest {
             originalUrl = "https://test.com/1",
             contentHtml = "<p>Content</p>"
         ).apply { id = 1; title = "Title" }
-        val existingAi = ArticleAi(article = article).apply { id = 99; titleZh = "已處理標題" }
+        val existingAi = ArticleAi(article = article).apply {
+            id = 99
+            views.add(
+                ArticleAiView(
+                    articleAi = this,
+                    difficulty = DifficultyLevel.NORMAL,
+                    fromLanguage = "en",
+                    toLanguage = "zh-TW"
+                ).apply { titleTo = "已處理標題" }
+            )
+        }
 
         every { articleAiRepository.findByArticle_Id(1) } returns Optional.of(existingAi)
 
@@ -316,7 +403,7 @@ class AiArticleServiceTest {
 
         assertEquals(99, result.id)
         assertEquals("已處理標題", result.titleZh)
-        verify(exactly = 0) { aiProcessor.process(any<String>(), any<String>()) }
+        verify(exactly = 0) { aiProcessor.process(any(), any(), any(), any()) }
     }
 
     /**
@@ -343,15 +430,17 @@ class AiArticleServiceTest {
 
         every { articleAiRepository.findByArticle_Id(1) } returns Optional.empty()
         every { articleRepository.findById(1) } returns Optional.of(article)
-        every { aiProcessor.process("Test Title", any<String>()) } returns aiResponse
+        every { aiProcessor.process("Test Title", any(), any(), any()) } returns aiResponse
         every {
             aiProcessor.optimizeHtml(
                 "Test Title",
+                any(),
+                any(),
                 any()
             )
         } returns HtmlOptimizationResult(
-            optimizedHtml = "<article><p>Optimized</p></article>",
-            optimizedZhHtml = "<article><p>優化內容</p></article>"
+            optimizedHtmlFrom = "<article><p>Optimized</p></article>",
+            optimizedHtmlTo = "<article><p>優化內容</p></article>"
         )
         every { articleAiRepository.save(any<ArticleAi>()) } answers {
             firstArg<ArticleAi>().apply { id = 100 }
@@ -361,7 +450,51 @@ class AiArticleServiceTest {
 
         assertNotNull(result.id)
         assertEquals("測試標題", result.titleZh)
-        verify(exactly = 1) { aiProcessor.process(any<String>(), any<String>()) }
-        verify(exactly = 1) { aiProcessor.optimizeHtml(any(), any()) }
+        verify(exactly = 1) { aiProcessor.process(any(), any(), any(), any()) }
+        verify(exactly = 1) { aiProcessor.optimizeHtml(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `toDetail should honor requested language pair`() {
+        val source = ArticleSource(name = "BBC", rssUrl = "https://feed", section = "world")
+        val article = Article(source = source, originalUrl = "https://example.com/1", contentHtml = "<p>orig</p>").apply {
+            id = 42
+            title = "Original"
+        }
+        val aiArticle = ArticleAi(article = article).apply { id = 77 }
+        val defaultView = ArticleAiView(
+            articleAi = aiArticle,
+            difficulty = DifficultyLevel.NORMAL,
+            fromLanguage = "en",
+            toLanguage = "zh-TW"
+        ).apply {
+            titleFrom = "English Title"
+            titleTo = "中文標題"
+            summaryFrom = "- point"
+            summaryTo = "- 重點"
+            optimizedHtmlFrom = "<p>en</p>"
+            cleanedTextFrom = "english text"
+        }
+        val frView = ArticleAiView(
+            articleAi = aiArticle,
+            difficulty = DifficultyLevel.HARD,
+            fromLanguage = "fr",
+            toLanguage = "en"
+        ).apply {
+            titleFrom = "Titre"
+            titleTo = "Title"
+            summaryFrom = "- resume"
+            summaryTo = "- summary"
+            optimizedHtmlFrom = "<p>fr</p>"
+            cleanedTextFrom = "texte"
+        }
+        aiArticle.views = mutableSetOf(defaultView, frView)
+
+        val detail = service.toDetail(aiArticle, DifficultyLevel.HARD, "fr", "en")
+
+        assertEquals("fr", detail.fromLanguage)
+        assertEquals("en", detail.toLanguage)
+        assertEquals(DifficultyLevel.HARD, detail.content?.difficulty)
+        assertTrue(detail.availableViews.any { it.fromLanguage == "fr" && it.toLanguage == "en" && it.difficulty == DifficultyLevel.HARD })
     }
 }

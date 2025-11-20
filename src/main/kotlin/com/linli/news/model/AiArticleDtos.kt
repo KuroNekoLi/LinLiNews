@@ -1,15 +1,9 @@
 package com.linli.news.model
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.annotation.JsonCreator
 import io.swagger.v3.oas.annotations.media.Schema
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize
-import com.fasterxml.jackson.databind.annotation.JsonSerialize
-import com.fasterxml.jackson.annotation.JsonAutoDetect
-import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility
 
-@Schema(name = "AiArticleDetail", description = "統一的文章資料物件（含 AI 欄位）")
+@Schema(name = "AiArticleDetail", description = "統一的文章資料物件（含 AI 視圖欄位）")
 data class AiArticleDetail(
     @field:Schema(description = "文章ID")
     val id: Long,
@@ -17,118 +11,236 @@ data class AiArticleDetail(
     val sourceName: String?,
     @field:Schema(description = "來源區塊，例如 news、world、technology")
     val section: String?,
-    @field:Schema(description = "文章標題（英文原文）")
+    @field:Schema(description = "原始文章標題")
     val title: String?,
     @field:Schema(description = "發布時間（ISO-8601 字串）")
     val publishedAt: String?,
     @field:Schema(description = "原始文章連結")
     val originalUrl: String,
-    @field:Schema(description = "完整 HTML 內容（原始）")
+    @field:Schema(description = "原始 HTML 內容（未經 AI 處理）")
     val contentHtml: String?,
-    @field:JsonProperty("optimized_zh_html")
-    @field:Schema(description = "AI 產生的繁體中文 HTML 內容")
-    val optimizedZhHtml: String?,
-    @field:JsonProperty("optimized_html")
-    @field:Schema(description = "AI 產生的英文 HTML 內容")
-    val optimizedHtml: String?,
 
-    // AI 產出欄位
+    @field:Schema(description = "AI 產出的原文標題")
+    val titleFrom: String?,
+    @field:Schema(description = "AI 產出的目標語言標題")
+    val titleTo: String?,
     @field:JsonProperty("title_zh")
-    @Schema(description = "AI 產生的中文標題")
+    @field:Schema(description = "向下相容的中文標題欄位（等同 titleTo）")
     val titleZh: String?,
 
+    @field:Schema(description = "AI 產出的原文摘要（條列）")
+    val summaryFrom: String?,
+    @field:Schema(description = "AI 產出的目標語言摘要（條列）")
+    val summaryTo: String?,
     @field:JsonProperty("summary_en")
-    @Schema(description = "AI 產生的英文摘要")
+    @field:Schema(description = "向下相容的英文摘要欄位（等同 summaryFrom）")
     val summaryEn: String?,
-
     @field:JsonProperty("summary_zh")
-    @Schema(description = "AI 產生的中文摘要")
+    @field:Schema(description = "向下相容的中文摘要欄位（等同 summaryTo）")
     val summaryZh: String?,
 
-    @field:JsonProperty("cleaned_text")
-    @Schema(description = "AI 清理後的英文純文字")
-    val cleanedText: String?,
+    @field:JsonProperty("requested_difficulty")
+    @Schema(description = "使用者指定的難度等級")
+    val requestedDifficulty: DifficultyLevel?,
 
-    @field:JsonProperty("cleaned_text_zh")
-    @Schema(description = "AI 翻譯後的中文純文字，良好分段（以空行分段）")
-    val cleanedTextZh: String?,
+    @field:JsonProperty("from_language")
+    @Schema(description = "原文語言碼（BCP-47）")
+    val fromLanguage: String,
+    @field:JsonProperty("to_language")
+    @Schema(description = "目標語言碼（BCP-47）")
+    val toLanguage: String,
 
-    @field:Schema(description = "AI 教學解說物件")
+    @Schema(description = "依語言與難度回傳的內容")
+    val content: DifficultyContent?,
+
+    @field:JsonProperty("available_difficulties")
+    @Schema(description = "此語言組合目前可用的難度列表")
+    val availableDifficulties: List<DifficultyLevel> = emptyList(),
+
+    @field:JsonProperty("available_views")
+    @Schema(description = "所有視圖（語言+難度）的摘要清單")
+    val availableViews: List<AiViewAvailability> = emptyList()
+)
+
+@Schema(name = "AiViewAvailability", description = "可用視圖（語言對＋難度）")
+data class AiViewAvailability(
+    @field:JsonProperty("from_language")
+    val fromLanguage: String,
+    @field:JsonProperty("to_language")
+    val toLanguage: String,
+    val difficulty: DifficultyLevel
+)
+
+@Schema(name = "DifficultyContent", description = "依語言與難度分級的文章內容與解析")
+data class DifficultyContent(
+    val difficulty: DifficultyLevel,
+    @field:JsonProperty("from_language")
+    val fromLanguage: String,
+    @field:JsonProperty("to_language")
+    val toLanguage: String,
+    @field:JsonProperty("optimized_html_from")
+    @Schema(description = "重寫後的原文 HTML 內容")
+    val optimizedHtmlFrom: String?,
+    @field:JsonProperty("optimized_html_to")
+    @Schema(description = "重寫後的目標語言 HTML 內容")
+    val optimizedHtmlTo: String?,
+    @field:JsonProperty("cleaned_text_from")
+    @Schema(description = "重寫後的原文純文字")
+    val cleanedTextFrom: String?,
+    @field:JsonProperty("cleaned_text_to")
+    @Schema(description = "重寫後的目標語言純文字")
+    val cleanedTextTo: String?,
+    @field:Schema(description = "教學解說物件")
     val explanation: Explanation?
 )
 
 @Schema(name = "Explanation", description = "AI 教學解說：單字、文法、句型與閱讀理解題")
 data class Explanation(
-    @field:Schema(description = "單字講解清單") val vocabulary: List<VocabularyItem>? = null,
-    @field:Schema(description = "文法講解清單") val grammar: List<GrammarItem>? = null,
+    val vocabulary: List<VocabularyItem>? = null,
+    val grammar: List<GrammarItem>? = null,
     @field:JsonProperty("sentence_patterns")
-    @field:Schema(description = "句型講解清單") val sentencePatterns: List<SentencePatternItem>? = null,
+    val sentencePatterns: List<SentencePatternItem>? = null,
     @field:JsonProperty("phrases_idioms")
-    @field:Schema(description = "片語/成語講解清單") val phrasesIdioms: List<PhraseIdiomItem>? = null,
+    val phrasesIdioms: List<PhraseIdiomItem>? = null,
     @field:JsonProperty("comprehension_mcq")
-    @field:Schema(description = "閱讀理解多選題清單") val comprehensionMcq: List<ComprehensionMcqItem>? = null
+    val comprehensionMcq: List<ComprehensionMcqItem>? = null
 )
 
 @Schema(name = "VocabularyItem")
 data class VocabularyItem(
-    @field:Schema(description = "詞性") val pos: String? = null,
-    @field:JsonProperty("word_en") @field:Schema(description = "單字（英文）") val wordEn: String? = null,
-    @field:JsonProperty("word_zh") @field:Schema(description = "單字（中文）") val wordZh: String? = null,
-    @field:JsonProperty("definition_en") @field:Schema(description = "釋義（英文）") val definitionEn: String? = null,
-    @field:JsonProperty("definition_zh") @field:Schema(description = "釋義（中文）") val definitionZh: String? = null,
-    @field:JsonProperty("example_en") @field:Schema(description = "例句（英文）") val exampleEn: String? = null,
-    @field:JsonProperty("example_zh") @field:Schema(description = "例句（中文）") val exampleZh: String? = null
+    @field:Schema(description = "詞性")
+    val pos: String? = null,
+    @field:JsonProperty("word_from")
+    val wordFrom: String? = null,
+    @field:JsonProperty("word_to")
+    val wordTo: String? = null,
+    @field:JsonProperty("definition_from")
+    val definitionFrom: String? = null,
+    @field:JsonProperty("definition_to")
+    val definitionTo: String? = null,
+    @field:JsonProperty("example_from")
+    val exampleFrom: String? = null,
+    @field:JsonProperty("example_to")
+    val exampleTo: String? = null
 )
 
 @Schema(name = "GrammarItem")
 data class GrammarItem(
-    @field:JsonProperty("rule_en") @field:Schema(description = "規則（英文簡述）") val ruleEn: String? = null,
-    @field:JsonProperty("explanation_en") @field:Schema(description = "解說（英文）") val explanationEn: String? = null,
-    @field:JsonProperty("explanation_zh") @field:Schema(description = "解說（中文）") val explanationZh: String? = null,
-    @field:JsonProperty("example_en") @field:Schema(description = "例句（英文）") val exampleEn: String? = null,
-    @field:JsonProperty("example_zh") @field:Schema(description = "例句（中文）") val exampleZh: String? = null
+    @field:JsonProperty("rule_from")
+    val ruleFrom: String? = null,
+    @field:JsonProperty("rule_to")
+    val ruleTo: String? = null,
+    @field:JsonProperty("explanation_from")
+    val explanationFrom: String? = null,
+    @field:JsonProperty("explanation_to")
+    val explanationTo: String? = null,
+    @field:JsonProperty("example_from")
+    val exampleFrom: String? = null,
+    @field:JsonProperty("example_to")
+    val exampleTo: String? = null
 )
 
 @Schema(name = "SentencePatternItem")
 data class SentencePatternItem(
-    @field:JsonProperty("pattern_en") @field:Schema(description = "句型（英文）") val patternEn: String? = null,
-    @field:JsonProperty("explanation_en") @field:Schema(description = "解說（英文）") val explanationEn: String? = null,
-    @field:JsonProperty("explanation_zh") @field:Schema(description = "解說（中文）") val explanationZh: String? = null,
-    @field:JsonProperty("example_en") @field:Schema(description = "例句（英文）") val exampleEn: String? = null,
-    @field:JsonProperty("example_zh") @field:Schema(description = "例句（中文）") val exampleZh: String? = null
+    @field:JsonProperty("pattern_from")
+    val patternFrom: String? = null,
+    @field:JsonProperty("pattern_to")
+    val patternTo: String? = null,
+    @field:JsonProperty("explanation_from")
+    val explanationFrom: String? = null,
+    @field:JsonProperty("explanation_to")
+    val explanationTo: String? = null,
+    @field:JsonProperty("example_from")
+    val exampleFrom: String? = null,
+    @field:JsonProperty("example_to")
+    val exampleTo: String? = null
 )
 
 @Schema(name = "PhraseIdiomItem")
 data class PhraseIdiomItem(
-    @field:JsonProperty("phrase_en") @field:Schema(description = "片語/成語（英文）") val phraseEn: String? = null,
-    @field:JsonProperty("explanation_en") @field:Schema(description = "解說（英文）") val explanationEn: String? = null,
-    @field:JsonProperty("explanation_zh") @field:Schema(description = "解說（中文）") val explanationZh: String? = null,
-    @field:JsonProperty("example_en") @field:Schema(description = "例句（英文）") val exampleEn: String? = null,
-    @field:JsonProperty("example_zh") @field:Schema(description = "例句（中文）") val exampleZh: String? = null
+    @field:JsonProperty("phrase_from")
+    val phraseFrom: String? = null,
+    @field:JsonProperty("phrase_to")
+    val phraseTo: String? = null,
+    @field:JsonProperty("explanation_from")
+    val explanationFrom: String? = null,
+    @field:JsonProperty("explanation_to")
+    val explanationTo: String? = null,
+    @field:JsonProperty("example_from")
+    val exampleFrom: String? = null,
+    @field:JsonProperty("example_to")
+    val exampleTo: String? = null
 )
 
 @Schema(name = "ComprehensionMcqItem")
 data class ComprehensionMcqItem(
-    @field:JsonProperty("question_en") @field:Schema(description = "題目（英文）") val questionEn: String? = null,
-    @field:JsonProperty("question_zh") @field:Schema(description = "題目（中文）") val questionZh: String? = null,
-    @field:Schema(description = "選項（英文）") val options: McqOptions? = null,
-    @field:Schema(description = "正確選項（A/B/C/D）") val answer: String? = null,
-    @field:JsonProperty("explanation_zh") @field:Schema(description = "詳解（中文）") val explanationZh: String? = null
+    @field:JsonProperty("question_from")
+    val questionFrom: String? = null,
+    @field:JsonProperty("question_to")
+    val questionTo: String? = null,
+    val options: List<McqOption>? = null,
+    val answer: String? = null,
+    @field:JsonProperty("explanation_from")
+    val explanationFrom: String? = null,
+    @field:JsonProperty("explanation_to")
+    val explanationTo: String? = null
 )
 
-@Schema(name = "McqOptions")
-@JsonIgnoreProperties(ignoreUnknown = true)
-@JsonDeserialize(using = McqOptionsDeserializer::class)
-@JsonSerialize(using = McqOptionsSerializer::class)
-@JsonAutoDetect(
-    fieldVisibility = Visibility.ANY,
-    getterVisibility = Visibility.NONE,
-    isGetterVisibility = Visibility.NONE,
-    setterVisibility = Visibility.NONE
+@Schema(name = "McqOption")
+data class McqOption(
+    val label: String,
+    @field:JsonProperty("text_from")
+    val textFrom: String? = null,
+    @field:JsonProperty("text_to")
+    val textTo: String? = null
 )
-data class McqOptions @JsonCreator constructor(
-    @field:JsonProperty("A") @get:JsonProperty("A") @param:JsonProperty("A") @field:Schema(description = "選項 A（英文）") val A: String? = null,
-    @field:JsonProperty("B") @get:JsonProperty("B") @param:JsonProperty("B") @field:Schema(description = "選項 B（英文）") val B: String? = null,
-    @field:JsonProperty("C") @get:JsonProperty("C") @param:JsonProperty("C") @field:Schema(description = "選項 C（英文）") val C: String? = null,
-    @field:JsonProperty("D") @get:JsonProperty("D") @param:JsonProperty("D") @field:Schema(description = "選項 D（英文）") val D: String? = null
+
+@Schema(name = "RandomArticlesFilters", description = "隨機文章查詢的過濾條件")
+data class RandomArticlesFilters(
+    @field:Schema(description = "來源過濾，例如 BBC、CNN")
+    val source: String?,
+    @field:Schema(description = "區塊過濾，例如 news、world、technology")
+    val section: String?,
+    @field:Schema(description = "指定 AI 輸出的難度等級")
+    val difficulty: DifficultyLevel?,
+    @field:JsonProperty("from_language")
+    @field:Schema(description = "原文語言碼")
+    val fromLanguage: String?,
+    @field:JsonProperty("to_language")
+    @field:Schema(description = "目標語言碼")
+    val toLanguage: String?
+)
+
+@Schema(name = "RandomArticlesResponse", description = "隨機取得 AI 文章的回應")
+data class RandomArticlesResponse(
+    @field:Schema(description = "訊息，預設為 success")
+    val message: String = "success",
+    @field:Schema(description = "請求的文章數")
+    val requestedCount: Int,
+    @field:Schema(description = "實際回傳的文章數")
+    val actualCount: Int,
+    @field:Schema(description = "資料庫內可用的總筆數")
+    val totalAvailable: Int,
+    @field:Schema(description = "使用的過濾條件")
+    val filters: RandomArticlesFilters,
+    @field:Schema(description = "文章清單")
+    val articles: List<AiArticleDetail>
+)
+
+@Schema(name = "RandomWithProcessingResponse", description = "隨機抽取並自動 AI 處理的回應")
+data class RandomWithProcessingResponse(
+    @field:Schema(description = "訊息，預設為 success")
+    val message: String = "success",
+    @field:Schema(description = "請求的文章數")
+    val requestedCount: Int,
+    @field:Schema(description = "實際回傳的文章數")
+    val actualCount: Int,
+    @field:Schema(description = "資料庫內可用的總筆數")
+    val totalAvailable: Int,
+    @field:Schema(description = "此次實際執行 AI 處理的文章數")
+    val processedCount: Int,
+    @field:Schema(description = "使用的過濾條件")
+    val filters: RandomArticlesFilters,
+    @field:Schema(description = "文章清單")
+    val articles: List<AiArticleDetail>
 )
