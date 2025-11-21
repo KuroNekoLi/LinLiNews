@@ -360,7 +360,8 @@ ${EXPLANATION_JSON_SCHEMA.prependIndent("          ")}
         重要要求：
         1. 教學內容必須簡潔且語意化，遵守上述 HTML 規則。
         2. 確保提供雙語標題（title_from 與 title_to）。
-        3. 確保提供 ${fromLangName} 與 ${toLangName} 摘要，各至少 3 點，使用條列式列出。
+        3. 確保提供 $fromLangName 與 $toLangName 摘要，各至少 3 點，使用條列式列出。
+        4. 單字、文法、片語、例句不需要html格式，像是不需要<p>
     """.trimIndent()
     }
 
