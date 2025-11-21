@@ -39,9 +39,9 @@ data class AiArticleDetail(
     @field:Schema(description = "向下相容的中文摘要欄位（等同 summaryTo）")
     val summaryZh: String?,
 
-    @field:JsonProperty("requested_difficulty")
-    @Schema(description = "使用者指定的難度等級")
-    val requestedDifficulty: DifficultyLevel?,
+    @field:JsonProperty("requested_difficulties")
+    @Schema(description = "使用者指定的難度等級（可複選，預設包含 Normal）")
+    val requestedDifficulties: List<DifficultyLevel>,
 
     @field:JsonProperty("from_language")
     @Schema(description = "原文語言碼（BCP-47）")
@@ -201,8 +201,8 @@ data class RandomArticlesFilters(
     val source: String?,
     @field:Schema(description = "區塊過濾，例如 news、world、technology")
     val section: String?,
-    @field:Schema(description = "指定 AI 輸出的難度等級")
-    val difficulty: DifficultyLevel?,
+    @field:Schema(description = "指定 AI 輸出的難度等級（可複選）")
+    val difficulties: List<DifficultyLevel>,
     @field:JsonProperty("from_language")
     @field:Schema(description = "原文語言碼")
     val fromLanguage: String?,

@@ -62,7 +62,7 @@ class AiArticleServiceTest {
             count = 1,
             source = "BBC",
             section = null,
-            difficulty = null,
+            difficulties = null,
             fromLanguage = null,
             toLanguage = null
         )
@@ -84,7 +84,7 @@ class AiArticleServiceTest {
             count = 5,
             source = null,
             section = null,
-            difficulty = null,
+            difficulties = null,
             fromLanguage = null,
             toLanguage = null
         )
@@ -109,7 +109,7 @@ class AiArticleServiceTest {
             count = 10,
             source = "BBC",
             section = null,
-            difficulty = null,
+            difficulties = null,
             fromLanguage = null,
             toLanguage = null
         )
@@ -134,7 +134,7 @@ class AiArticleServiceTest {
             count = 10,
             source = null,
             section = "technology",
-            difficulty = null,
+            difficulties = null,
             fromLanguage = null,
             toLanguage = null
         )
@@ -165,7 +165,7 @@ class AiArticleServiceTest {
             count = 10,
             source = "BBC",
             section = "world",
-            difficulty = null,
+            difficulties = null,
             fromLanguage = null,
             toLanguage = null
         )
@@ -207,7 +207,7 @@ class AiArticleServiceTest {
             count = 1,
             source = null,
             section = null,
-            difficulty = null,
+            difficulties = null,
             fromLanguage = null,
             toLanguage = null
         )
@@ -236,7 +236,7 @@ class AiArticleServiceTest {
             count = 1,
             source = null,
             section = null,
-            difficulty = null,
+            difficulties = null,
             fromLanguage = null,
             toLanguage = null
         )
@@ -290,7 +290,7 @@ class AiArticleServiceTest {
             count = 1,
             source = null,
             section = null,
-            difficulty = null,
+            difficulties = null,
             fromLanguage = null,
             toLanguage = null
         )
@@ -342,7 +342,7 @@ class AiArticleServiceTest {
             count = 2,
             source = null,
             section = null,
-            difficulty = null,
+            difficulties = null,
             fromLanguage = null,
             toLanguage = null
         )
@@ -402,7 +402,7 @@ class AiArticleServiceTest {
         val result = service.getOrProcess(1)
 
         assertEquals(99, result.id)
-        assertEquals("已處理標題", result.titleZh)
+        assertEquals("已處理標題", result.views.first().titleTo)
         verify(exactly = 0) { aiProcessor.process(any(), any(), any(), any()) }
     }
 
@@ -449,7 +449,7 @@ class AiArticleServiceTest {
         val result = service.getOrProcess(1)
 
         assertNotNull(result.id)
-        assertEquals("測試標題", result.titleZh)
+        assertEquals("測試標題", result.views.first().titleTo)
         verify(exactly = 1) { aiProcessor.process(any(), any(), any(), any()) }
         verify(exactly = 1) { aiProcessor.optimizeHtml(any(), any(), any(), any()) }
     }
@@ -490,7 +490,7 @@ class AiArticleServiceTest {
         }
         aiArticle.views = mutableSetOf(defaultView, frView)
 
-        val detail = service.toDetail(aiArticle, DifficultyLevel.HARD, "fr", "en")
+        val detail = service.toDetail(aiArticle, listOf(DifficultyLevel.HARD), "fr", "en")
 
         assertEquals("fr", detail.fromLanguage)
         assertEquals("en", detail.toLanguage)

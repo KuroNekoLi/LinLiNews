@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.linli.news.config.FullTextRssProperties
 import com.linli.news.domain.ArticleSource
 import com.linli.news.integration.FullTextRssClient
-import com.linli.news.repository.ArticleRepository
-import com.linli.news.repository.ArticleSourceRepository
+import com.linli.news.model.FullTextArticleResponse
 import io.mockk.every
+import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.verify
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -24,14 +24,12 @@ import org.junit.jupiter.api.Test
 class FeedImportServiceTest {
 
     private val fullTextRssClient = mockk<FullTextRssClient>()
-    private val articleRepository = mockk<ArticleRepository>(relaxed = true)
-    private val articleSourceRepository = mockk<ArticleSourceRepository>()
+    private val feedImportTxService = mockk<FeedImportTxService>()
     private val fullTextRssProperties = mockk<FullTextRssProperties>()
 
     private val service = FeedImportService(
         fullTextRssClient = fullTextRssClient,
-        articleRepository = articleRepository,
-        articleSourceRepository = articleSourceRepository,
+        feedImportTxService = feedImportTxService,
         fullTextRssProperties = fullTextRssProperties
     )
 
@@ -44,7 +42,9 @@ class FeedImportServiceTest {
 
         // ArticleSource 行為
         val savedSource = ArticleSource(name = "BBC", rssUrl = rssUrl, section = "news").apply { id = 1 }
-        every { articleSourceRepository.findByRssUrl(rssUrl) } returns savedSource
+        every { feedImportTxService.getOrCreateSource("BBC", rssUrl, "news") } returns savedSource
+        every { feedImportTxService.saveArticleIfNew(any()) } returns true
+        justRun { feedImportTxService.updateArticleContent(any()) }
 
         // 準備 Feed JSON：1 筆有效 + 1 筆無效（front page）
         val mapper = ObjectMapper()
@@ -74,9 +74,20 @@ class FeedImportServiceTest {
         )
 
         every { fullTextRssClient.fetchFeedJson(rssUrl) } returns json
-
-        // 避免重複：findByOriginalUrl 回傳 null 表示新文章
-        every { articleRepository.findByOriginalUrl("https://example.com/a1") } returns null
+        every {
+            fullTextRssClient.fetchArticleFullText("https://example.com/a1")
+        } returns FullTextArticleResponse(
+            title = "Valid Article 1",
+            excerpt = null,
+            date = null,
+            author = null,
+            language = null,
+            url = "https://example.com/a1",
+            effectiveUrl = null,
+            domain = null,
+            wordCount = 250,
+            content = "<p>${"Enhanced content ".repeat(15)}</p>"
+        )
 
         val imported = service.importFromFeed(rssUrl, sourceName = "BBC", section = "news")
         // 至少不會拋出錯誤，且呼叫了 feed 讀取；匯入筆數應該為非負

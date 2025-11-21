@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.server.ResponseStatusException
 import java.time.OffsetDateTime
+import java.util.LinkedHashSet
 import java.util.concurrent.ConcurrentHashMap
 import java.util.regex.Pattern
 
@@ -37,6 +38,14 @@ class AiArticleService(
     private val logger = LoggerFactory.getLogger(AiArticleService::class.java)
     private val objectMapper = ObjectMapper()
     private val htmlTagPattern: Pattern = Pattern.compile("<[^>]*>")
+
+    /**
+     * 標準化難度清單，預設回傳包含 NORMAL，並移除重複。
+     */
+    private fun normalizeDifficulties(difficulties: List<DifficultyLevel>?): List<DifficultyLevel> {
+        val unique = difficulties?.let { LinkedHashSet(it) }?.toList().orEmpty()
+        return if (unique.isEmpty()) listOf(DifficultyLevel.NORMAL) else unique
+    }
 
     private fun normalizeLanguage(language: String?, defaultValue: String): String {
         val fallback = language?.trim()?.takeIf { it.isNotEmpty() } ?: defaultValue
@@ -515,7 +524,7 @@ class AiArticleService(
         count: Int,
         source: String?,
         section: String?,
-        difficulty: DifficultyLevel?,
+        difficulties: List<DifficultyLevel>?,
         fromLanguage: String?,
         toLanguage: String?
     ): Pair<List<ArticleAi>, Int> {
@@ -536,22 +545,24 @@ class AiArticleService(
         if (all.isEmpty()) return Pair(emptyList(), 0)
 
         val (normalizedFrom, normalizedTo) = normalizeLanguagePair(fromLanguage, toLanguage)
+        val difficultySelection = normalizeDifficulties(difficulties)
         val eligibleByLang = all.filter { article ->
             article.views.any {
                 it.fromLanguage.equals(normalizedFrom, ignoreCase = true) &&
                     it.toLanguage.equals(normalizedTo, ignoreCase = true)
             }
         }
-        val eligible = if (difficulty != null) {
-            eligibleByLang.filter { article ->
-                article.views.any {
-                    it.difficulty == difficulty &&
-                        it.fromLanguage.equals(normalizedFrom, ignoreCase = true) &&
-                        it.toLanguage.equals(normalizedTo, ignoreCase = true)
-                }
+        val filteredByDifficulty = eligibleByLang.filter { article ->
+            article.views.any {
+                difficultySelection.contains(it.difficulty) &&
+                    it.fromLanguage.equals(normalizedFrom, ignoreCase = true) &&
+                    it.toLanguage.equals(normalizedTo, ignoreCase = true)
             }
-        } else {
-            if (eligibleByLang.isNotEmpty()) eligibleByLang else all
+        }
+        val eligible = when {
+            filteredByDifficulty.isNotEmpty() -> filteredByDifficulty
+            eligibleByLang.isNotEmpty() -> eligibleByLang
+            else -> all
         }
 
         if (eligible.isEmpty()) {
@@ -579,7 +590,7 @@ class AiArticleService(
         count: Int,
         source: String?,
         section: String?,
-        difficulty: DifficultyLevel?,
+        difficulties: List<DifficultyLevel>?,
         fromLanguage: String?,
         toLanguage: String?
     ): Triple<List<ArticleAi>, Int, Int> {
@@ -591,6 +602,7 @@ class AiArticleService(
 
         val selectedArticles = allArticles.pickRandom(count)
         val (normalizedFrom, normalizedTo) = normalizeLanguagePair(fromLanguage, toLanguage)
+        val difficultySelection = normalizeDifficulties(difficulties)
 
         logger.info(
             "Starting random processing of {} articles (source={}, section={})",
@@ -608,9 +620,10 @@ class AiArticleService(
                 async(Dispatchers.IO) {
                     val articleId = requireNotNull(article.id) { "Article must have an ID" }
                     try {
+                        var processedThisArticle = false
                         // 1. 先查是否已經有 AI 結果（readOnly transaction，可並行）
                         val existing = findExistingAiArticle(articleId)
-                        val aiArticle = if (existing != null) {
+                        val aiArticle: ArticleAi = if (existing != null) {
                             existing
                         } else {
                             // 2. 查原始文章內容（readOnly transaction，可並行）
@@ -681,21 +694,25 @@ class AiArticleService(
                             }
 
                             // 4. 寫入：透過 Semaphore 確保同一時間只有一個寫入
-                            writeSemaphore.withPermit {
+                            val savedArticle = writeSemaphore.withPermit {
                                 saveAiResult(
                                     fullArticle,
                                     json,
                                     optimizedResult,
-                                    difficulty ?: DifficultyLevel.NORMAL,
+                                    difficultySelection.first(),
                                     normalizedFrom,
                                     normalizedTo
                                 )
                             }
+                            processedThisArticle = true
+                            savedArticle
                         }
 
                         synchronized(result) {
                             result.add(aiArticle)
-                            processedCount++
+                            if (processedThisArticle) {
+                                processedCount++
+                            }
                         }
                     } catch (e: ResponseStatusException) {
                         // 保留 429 等 HTTP 状态错误给上一层处理
@@ -725,7 +742,7 @@ class AiArticleService(
         count: Int,
         source: String?,
         section: String?,
-        difficulty: DifficultyLevel?,
+        difficulties: List<DifficultyLevel>?,
         fromLanguage: String?,
         toLanguage: String?
     ): Triple<List<ArticleAi>, Int, Int> {
@@ -738,6 +755,7 @@ class AiArticleService(
 
         val selectedArticles = allArticles.pickRandom(count)
         val (normalizedFrom, normalizedTo) = normalizeLanguagePair(fromLanguage, toLanguage)
+        val difficultySelection = normalizeDifficulties(difficulties)
 
         logger.info(
             "Starting random processing of {} articles (source={}, section={})",
@@ -755,9 +773,10 @@ class AiArticleService(
                 async(Dispatchers.IO) {
                     val articleId = requireNotNull(article.id) { "Article must have an ID" }
                     try {
+                        var processedThisArticle = false
                         // 1. 先查是否已经有 AI 结果（readOnly transaction，可并行）
                         val existing = findExistingAiArticle(articleId)
-                        val aiArticle = if (existing != null) {
+                        val aiArticle: ArticleAi = if (existing != null) {
                             existing
                         } else {
                             // 2. 查原始文章内容（readOnly transaction，可并行）
@@ -772,7 +791,7 @@ class AiArticleService(
 
                             // 3. AI 處理（不在 DB 交易內，可並行）
                             // Two-stage AI processing: rewrite and explain
-                            val difficultyLevel = difficulty ?: DifficultyLevel.NORMAL
+                            val difficultyLevel = difficultySelection.first()
                             val combinedResult: JsonNode = try {
                                 val aiStart = System.currentTimeMillis()
                                 val stage1Result = aiProcessor.rewriteStage1(
@@ -893,7 +912,7 @@ class AiArticleService(
                             )
 
                             // 5. 寫入：透過 Semaphore 確保同一時間只有一個寫入
-                            writeSemaphore.withPermit {
+                            val savedArticle = writeSemaphore.withPermit {
                                 saveAiResult(
                                     fullArticle,
                                     combinedResult,
@@ -903,11 +922,15 @@ class AiArticleService(
                                     normalizedTo
                                 )
                             }
+                            processedThisArticle = true
+                            savedArticle
                         }
 
                         synchronized(result) {
                             result.add(aiArticle)
-                            processedCount++
+                            if (processedThisArticle) {
+                                processedCount++
+                            }
                         }
                     } catch (e: ResponseStatusException) {
                         // 保留 429 等 HTTP 状态错误给上一层处理
@@ -936,13 +959,14 @@ class AiArticleService(
 
     fun getOrProcessDto(
         articleId: Long,
-        difficulty: DifficultyLevel?,
+        difficulties: List<DifficultyLevel>?,
         fromLanguage: String?,
         toLanguage: String?
     ): AiArticleDetail {
         val (normalizedFrom, normalizedTo) = normalizeLanguagePair(fromLanguage, toLanguage)
+        val difficultySelection = normalizeDifficulties(difficulties)
         val aiArticle = getOrProcess(articleId)
-        return toDto(aiArticle.article, aiArticle, difficulty, normalizedFrom, normalizedTo)
+        return toDto(aiArticle.article, aiArticle, difficultySelection, normalizedFrom, normalizedTo)
     }
 
     @Transactional
@@ -986,25 +1010,27 @@ class AiArticleService(
 
     fun processAndOverwriteDto(
         articleId: Long,
-        difficulty: DifficultyLevel?,
+        difficulties: List<DifficultyLevel>?,
         fromLanguage: String?,
         toLanguage: String?
     ): AiArticleDetail {
-        val targetDifficulty = difficulty ?: DifficultyLevel.NORMAL
+        val difficultySelection = normalizeDifficulties(difficulties)
+        val targetDifficulty = difficultySelection.first()
         val (normalizedFrom, normalizedTo) = normalizeLanguagePair(fromLanguage, toLanguage)
         val aiArticle = processAndOverwrite(articleId, targetDifficulty, normalizedFrom, normalizedTo)
-        return toDto(aiArticle.article, aiArticle, targetDifficulty, normalizedFrom, normalizedTo)
+        return toDto(aiArticle.article, aiArticle, difficultySelection, normalizedFrom, normalizedTo)
     }
 
     private fun toDto(
         article: Article,
         aiArticle: ArticleAi,
-        requestedDifficulty: DifficultyLevel?,
+        requestedDifficulties: List<DifficultyLevel>,
         fromLanguage: String,
         toLanguage: String
     ): AiArticleDetail {
         val articleId = requireNotNull(article.id) { "Article must have an ID" }
-        val selectedView = selectView(aiArticle, requestedDifficulty, fromLanguage, toLanguage)
+        val normalizedRequested = normalizeDifficulties(requestedDifficulties)
+        val selectedView = selectView(aiArticle, normalizedRequested, fromLanguage, toLanguage)
         val difficultyContent = selectedView?.toDifficultyContent()
         val availableForPair = aiArticle.views
             .filter {
@@ -1040,7 +1066,7 @@ class AiArticleService(
             summaryTo = summaryTo,
             summaryEn = summaryFrom,
             summaryZh = summaryTo,
-            requestedDifficulty = requestedDifficulty,
+            requestedDifficulties = normalizedRequested,
             fromLanguage = finalFromLang,
             toLanguage = finalToLang,
             content = difficultyContent,
@@ -1051,16 +1077,16 @@ class AiArticleService(
 
     fun toDetail(
         aiArticle: ArticleAi,
-        requestedDifficulty: DifficultyLevel?,
+        requestedDifficulties: List<DifficultyLevel>,
         fromLanguage: String,
         toLanguage: String
     ): AiArticleDetail {
-        return toDto(aiArticle.article, aiArticle, requestedDifficulty, fromLanguage, toLanguage)
+        return toDto(aiArticle.article, aiArticle, requestedDifficulties, fromLanguage, toLanguage)
     }
 
     private fun selectView(
         aiArticle: ArticleAi,
-        requestedDifficulty: DifficultyLevel?,
+        requestedDifficulties: List<DifficultyLevel>,
         fromLanguage: String,
         toLanguage: String
     ): ArticleAiView? {
@@ -1077,8 +1103,8 @@ class AiArticleService(
 
         val candidates = if (matching.isNotEmpty()) matching else aiArticle.views
 
-        if (requestedDifficulty != null) {
-            candidates.firstOrNull { it.difficulty == requestedDifficulty }?.let { return it }
+        requestedDifficulties.forEach { level ->
+            candidates.firstOrNull { it.difficulty == level }?.let { return it }
         }
 
         val priority = listOf(
