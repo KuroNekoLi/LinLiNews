@@ -12,6 +12,7 @@ import com.linli.news.service.AiArticleService
 import io.swagger.v3.oas.annotations.Hidden
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.ArraySchema
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
@@ -59,7 +60,7 @@ class AiArticleController(
         @RequestParam(name = "size", defaultValue = "20") size: Int,
         @Parameter(
             description = "指定文章輸出的難度等級（可複選；預設 Normal；Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
-            schema = Schema(implementation = DifficultyLevel::class)
+            array = ArraySchema(schema = Schema(implementation = DifficultyLevel::class))
         )
         @RequestParam(name = "difficulty", required = false) difficulties: List<DifficultyLevel>?,
         @Parameter(description = "原文語言碼（預設 en）")
@@ -87,7 +88,7 @@ class AiArticleController(
         @PathVariable articleId: Long,
         @Parameter(
             description = "指定文章輸出的難度等級（可複選；預設 Normal；Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
-            schema = Schema(implementation = DifficultyLevel::class)
+            array = ArraySchema(schema = Schema(implementation = DifficultyLevel::class))
         )
         @RequestParam(name = "difficulty", required = false) difficulties: List<DifficultyLevel>?,
         @Parameter(description = "原文語言碼（預設 en）")
@@ -134,7 +135,7 @@ class AiArticleController(
         @RequestParam(name = "section", required = false) section: String?,
         @Parameter(
             description = "指定文章輸出的難度等級（可複選；預設 Normal；Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
-            schema = Schema(implementation = DifficultyLevel::class)
+            array = ArraySchema(schema = Schema(implementation = DifficultyLevel::class))
         )
         @RequestParam(name = "difficulty", required = false) difficulties: List<DifficultyLevel>?,
         @Parameter(description = "原文語言碼（預設 en）")
@@ -201,7 +202,7 @@ class AiArticleController(
         @RequestParam(name = "section", required = false) section: String?,
         @Parameter(
             description = "指定文章輸出的難度等級（可複選；預設 Normal；Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
-            schema = Schema(implementation = DifficultyLevel::class)
+            array = ArraySchema(schema = Schema(implementation = DifficultyLevel::class))
         )
         @RequestParam(name = "difficulty", required = false) difficulties: List<DifficultyLevel>?,
         @Parameter(description = "原文語言碼（預設 en）")
@@ -309,13 +310,18 @@ class AiArticleController(
     @PostMapping("/{id}/reprocess-with-debug")
     @Profile("!prod")
     @Hidden
-    @Operation(
-        summary = "[測試] 重新處理並診斷",
-        description = "測試用端點，重新處理文章並回傳詳細診斷信息（僅限非生產環境）"
-    )
+        @Operation(
+            summary = "[測試] 重新處理並診斷",
+            description = "測試用端點，重新處理文章並回傳詳細診斷信息（僅限非生產環境）"
+        )
     fun reprocessArticleWithDebug(
         @PathVariable id: Long,
-        @RequestParam(name = "difficulty", required = false) difficulties: List<DifficultyLevel>?,
+        @RequestParam(name = "difficulty", required = false)
+        @Parameter(
+            description = "指定文章輸出的難度等級（可複選；預設 Normal；Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
+            array = ArraySchema(schema = Schema(implementation = DifficultyLevel::class))
+        )
+        difficulties: List<DifficultyLevel>?,
         @RequestParam(name = "fromLanguage", defaultValue = "en") fromLanguage: String,
         @RequestParam(name = "toLanguage", defaultValue = "zh-TW") toLanguage: String
     ): ResponseEntity<Map<String, Any?>> {

@@ -26,6 +26,7 @@ import com.linli.news.service.AiArticleService
 import com.linli.news.model.AiArticleDetail
 import com.linli.news.model.DifficultyLevel
 import org.slf4j.LoggerFactory
+import io.swagger.v3.oas.annotations.media.ArraySchema
 
 /**
  * 文章資料結構
@@ -490,7 +491,7 @@ class ArticleQueryController(
         @PathVariable id: Long,
         @Parameter(
             description = "指定文章輸出的難度等級（可複選；預設 Normal；Easy=B1、Normal=B2、Hard=C1、VeryHard=C2）",
-            schema = Schema(implementation = DifficultyLevel::class)
+            array = ArraySchema(schema = Schema(implementation = DifficultyLevel::class))
         )
         @RequestParam(name = "difficulty", required = false) difficulties: List<DifficultyLevel>?,
         @Parameter(description = "原文語言碼（預設 en）")
