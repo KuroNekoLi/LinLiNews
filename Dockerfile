@@ -13,5 +13,5 @@ COPY --from=builder /workspace/build/libs/*.jar /app/app.jar
 EXPOSE 8080
 # Allow passing JVM and Spring profiles via env
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -XX:+UseContainerSupport" \
-    SPRING_PROFILES_ACTIVE=default
+    SPRING_PROFILES_ACTIVE=prod
 ENTRYPOINT ["sh","-c","java $JAVA_OPTS -jar /app/app.jar"]
