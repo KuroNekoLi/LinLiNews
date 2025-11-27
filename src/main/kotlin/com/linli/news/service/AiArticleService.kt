@@ -19,7 +19,6 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.server.ResponseStatusException
 import java.time.OffsetDateTime
-import java.util.LinkedHashSet
 import java.util.concurrent.ConcurrentHashMap
 import java.util.regex.Pattern
 
@@ -68,6 +67,20 @@ class AiArticleService(
         return articleAiRepository.findAll(PageRequest.of(page, size))
     }
 
+    @Transactional(readOnly = true)
+    fun listProcessedFiltered(
+        page: Int,
+        size: Int,
+        difficulties: List<DifficultyLevel>?,
+        fromLanguage: String?,
+        toLanguage: String?
+    ): Page<ArticleAi> {
+        val difficultySelection = normalizeDifficulties(difficulties)
+        val (normalizedFrom, normalizedTo) = normalizeLanguagePair(fromLanguage, toLanguage)
+        val pageable = PageRequest.of(page, size)
+        return articleAiRepository.findByViewFilters(normalizedFrom, normalizedTo, difficultySelection, pageable)
+    }
+
     /**
      * 用於同一篇 article 處理時互斥（避免同時寫入同一ID）
      */
@@ -93,6 +106,7 @@ class AiArticleService(
     @Transactional(readOnly = true)
     fun findExistingAiArticle(articleId: Long): ArticleAi? {
         logger.debug("Finding existing AI article for ID {}", articleId)
+        // article_id 是唯一的，所以只會返回一筆記錄
         return articleAiRepository.findByArticle_Id(articleId).orElse(null)
     }
 
@@ -460,43 +474,42 @@ class AiArticleService(
         toLanguage: String = DEFAULT_TO_LANGUAGE
     ): ArticleAi {
         val startTime = System.currentTimeMillis()
-        logger.info("Saving AI result for article ID {}", article.id)
+        val articleId = requireNotNull(article.id) { "Article must have an ID" }
+        logger.info("Saving AI result for article ID {}", articleId)
         val normalizedFrom = normalizeLanguage(fromLanguage, DEFAULT_FROM_LANGUAGE)
         val normalizedTo = normalizeLanguage(toLanguage, DEFAULT_TO_LANGUAGE)
 
-        try {
-            // 直接插入
-            val entity = ArticleAi(article = article).applyFrom(
-                json,
-                optimizedResult,
-                difficulty,
-                normalizedFrom,
-                normalizedTo
-            )
-            val savedEntity = articleAiRepository.save(entity)
-            logger.info(
-                "Direct save successful for article ID {} in {}ms",
-                article.id,
-                System.currentTimeMillis() - startTime
-            )
-            return savedEntity
+        // 總是先查詢，避免創建重複記錄
+        // article_id 是唯一的，所以只會有 0 或 1 筆記錄
+        val existingList = articleAiRepository.findByArticle_Id(articleId).map { listOf(it) }.orElse(emptyList())
 
-        } catch (e: Exception) {
-            logger.warn("Direct save failed, trying update approach for article ID {}: {}", article.id, e.message)
-
-            // 查詢+更新
-            val existing = articleAiRepository.findByArticle_Id(article.id!!).orElse(
-                ArticleAi(article = article)
-            ).applyFrom(json, optimizedResult, difficulty, normalizedFrom, normalizedTo)
-
-            val savedEntity = articleAiRepository.save(existing)
-            logger.info(
-                "Fallback save successful for article ID {} in {}ms",
-                article.id,
-                System.currentTimeMillis() - startTime
-            )
-            return savedEntity
+        val entity = if (existingList.isNotEmpty()) {
+            // 如果有多筆記錄，使用第一筆並記錄警告
+            if (existingList.size > 1) {
+                logger.error(
+                    "Found {} duplicate ArticleAi records for article {}, using the first one",
+                    existingList.size,
+                    articleId
+                )
+            }
+            existingList.first()
+        } else {
+            // 創建新記錄
+            ArticleAi(article = article)
         }
+
+        // 應用新的內容
+        entity.applyFrom(json, optimizedResult, difficulty, normalizedFrom, normalizedTo)
+
+        val savedEntity = articleAiRepository.save(entity)
+        logger.info(
+            "Save successful for article ID {} in {}ms (existing={}, views={})",
+            articleId,
+            System.currentTimeMillis() - startTime,
+            existingList.isNotEmpty(),
+            savedEntity.views.size
+        )
+        return savedEntity
     }
 
     private fun loadProcessableArticles(source: String?, section: String?): List<Article> {
@@ -965,8 +978,204 @@ class AiArticleService(
     ): AiArticleDetail {
         val (normalizedFrom, normalizedTo) = normalizeLanguagePair(fromLanguage, toLanguage)
         val difficultySelection = normalizeDifficulties(difficulties)
-        val aiArticle = getOrProcess(articleId)
-        return toDto(aiArticle.article, aiArticle, difficultySelection, normalizedFrom, normalizedTo)
+        val targetDifficulty = difficultySelection.first()
+
+        // 檢查該難度是否存在
+        // 先查詢 ArticleAi，然後檢查其 views 中是否有該難度
+        val existingAi = findExistingAiArticle(articleId)
+        val difficultyExists = existingAi?.views?.any { view ->
+            view.difficulty == targetDifficulty &&
+                    view.fromLanguage.equals(normalizedFrom, ignoreCase = true) &&
+                    view.toLanguage.equals(normalizedTo, ignoreCase = true)
+        } ?: false
+
+        val finalAiArticle = if (!difficultyExists) {
+            // 該難度不存在，需要處理
+            logger.info(
+                "Requested difficulty {} not found for article {}, generating new view",
+                targetDifficulty,
+                articleId
+            )
+
+            // 先檢查文章是否有任何 AI 處理過的記錄
+            val existingAi = findExistingAiArticle(articleId)
+            if (existingAi != null) {
+                // 已有 ArticleAi，只需添加新難度的 view
+                processSpecificDifficulty(existingAi.article, targetDifficulty, normalizedFrom, normalizedTo)
+            } else {
+                // 完全沒處理過，需要完整處理
+                getOrProcess(articleId)
+                // 處理後再次檢查，如果不是請求的難度，則生成該難度
+                val processed = findExistingAiArticle(articleId)!!
+                if (!processed.views.any {
+                        it.difficulty == targetDifficulty &&
+                                it.fromLanguage.equals(normalizedFrom, ignoreCase = true) &&
+                                it.toLanguage.equals(normalizedTo, ignoreCase = true)
+                    }) {
+                    processSpecificDifficulty(processed.article, targetDifficulty, normalizedFrom, normalizedTo)
+                } else {
+                    processed
+                }
+            }
+        } else {
+            // 該難度已存在，直接獲取
+            findExistingAiArticle(articleId)!!
+        }
+
+        return toDto(finalAiArticle.article, finalAiArticle, difficultySelection, normalizedFrom, normalizedTo)
+    }
+
+    /**
+     * 為特定文章生成特定難度的 AI 內容
+     * 如果該難度已存在，則更新；否則新增
+     */
+    @Transactional
+    fun processSpecificDifficulty(
+        article: Article,
+        difficulty: DifficultyLevel,
+        fromLanguage: String,
+        toLanguage: String
+    ): ArticleAi {
+        val articleId = requireNotNull(article.id) { "Article must have an ID" }
+        require(!article.contentHtml.isNullOrBlank()) { "Article has no contentHtml; please fetch full content first" }
+
+        val textContent = extractTextFromHtml(article.contentHtml)
+        require(!textContent.isNullOrBlank()) { "Article textContent is empty after HTML extraction" }
+
+        logger.info(
+            "Processing article {} with difficulty {} (from={}, to={})",
+            articleId,
+            difficulty,
+            fromLanguage,
+            toLanguage
+        )
+
+        // 使用兩階段 AI 處理：重寫 + 教學
+        val combinedResult: JsonNode = try {
+            val aiStart = System.currentTimeMillis()
+
+            // Stage 1: 重寫文章
+            val stage1Result = aiProcessor.rewriteStage1(
+                difficulty,
+                article.title,
+                article.contentHtml!!,
+                fromLanguage,
+                toLanguage
+            )
+            logger.info(
+                "AI rewrite stage 1 completed in {}ms for article ID {}",
+                System.currentTimeMillis() - aiStart,
+                articleId
+            )
+
+            // 提取 Stage 1 的結果用於 Stage 2
+            val stage1CleanedText = stage1Result.path("cleaned_text_from").asText(
+                stage1Result.path("cleaned_text").asText("")
+            )
+            val stage1Title = stage1Result.path("title_from").asText(
+                stage1Result.path("title").asText("")
+            )
+
+            // Stage 2: 生成教學內容
+            val stage2Result = aiProcessor.teachingStage2(
+                difficulty,
+                stage1Title,
+                stage1CleanedText,
+                fromLanguage,
+                toLanguage
+            )
+            logger.info(
+                "AI teaching stage 2 completed in {}ms for article ID {}",
+                System.currentTimeMillis() - aiStart,
+                articleId
+            )
+
+            // 合併結果
+            val combined = objectMapper.createObjectNode()
+
+            // Stage1 的欄位：文章內容、HTML 與英文標題
+            combined.put(
+                "title_from",
+                stage1Result.path("title_from").asText(stage1Result.path("title").asText(null))
+            )
+            combined.put(
+                "title_to",
+                stage1Result.path("title_to").asText(stage2Result.path("title_to").asText(null))
+            )
+            combined.put(
+                "cleaned_text_from",
+                stage1Result.path("cleaned_text_from").asText(stage1Result.path("cleaned_text").asText(null))
+            )
+            combined.put(
+                "cleaned_text_to",
+                stage1Result.path("cleaned_text_to").asText(stage1Result.path("cleaned_text_zh").asText(null))
+            )
+            combined.put(
+                "optimized_html_from",
+                stage1Result.path("optimized_html_from").asText(stage1Result.path("optimized_html").asText(null))
+            )
+            combined.put(
+                "optimized_html_to",
+                stage1Result.path("optimized_html_to").asText(stage1Result.path("optimized_zh_html").asText(null))
+            )
+            combined.put("word_count", stage1Result.path("word_count").asInt(0))
+
+            // Stage2 的欄位：雙語標題、雙語摘要與解析
+            combined.put(
+                "title_from",
+                stage2Result.path("title_from").asText(combined.path("title_from").asText(null))
+            )
+            combined.put(
+                "title_to",
+                stage2Result.path("title_to").asText(combined.path("title_to").asText(null))
+            )
+            combined.put("summary_from", stage2Result.path("summary_from").asText(null))
+            combined.put("summary_to", stage2Result.path("summary_to").asText(null))
+            combined.set<JsonNode>("explanation", stage2Result.path("explanation"))
+
+            if (combined.path("title_from").isNull && !stage2Result.path("title_from").isNull) {
+                combined.put("title_from", stage2Result.path("title_from").asText(null))
+                logger.info("Fallback to title_from from Stage2")
+            }
+
+            combined
+        } catch (e: AiQuotaException) {
+            logger.error("AI quota exceeded for article ID {}: {}", articleId, e.message)
+            throw ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, e.message, e)
+        } catch (e: Exception) {
+            logger.error(
+                "Error during AI processing for article ID {}: {}",
+                articleId,
+                e.message,
+                e
+            )
+            throw e
+        }
+
+        // 建立優化後的 HTML 結果物件
+        val optimizedFrom = combinedResult.path("optimized_html_from").asText(
+            combinedResult.path("optimized_html").asText(null)
+        )
+        if (optimizedFrom.isNullOrBlank()) {
+            throw IllegalStateException("AI 回應缺少 optimized_html_from 欄位")
+        }
+        val optimizedTo = combinedResult.path("optimized_html_to").asText(
+            combinedResult.path("optimized_zh_html").asText(null)
+        )
+        val optimizedResult = HtmlOptimizationResult(
+            optimizedHtmlFrom = optimizedFrom,
+            optimizedHtmlTo = optimizedTo
+        )
+
+        // 儲存結果
+        return saveAiResult(
+            article,
+            combinedResult,
+            optimizedResult,
+            difficulty,
+            fromLanguage,
+            toLanguage
+        )
     }
 
     @Transactional

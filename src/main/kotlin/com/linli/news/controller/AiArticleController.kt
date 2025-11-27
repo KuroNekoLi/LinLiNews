@@ -2,12 +2,7 @@ package com.linli.news.controller
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import com.linli.news.model.AiArticleDetail
-import com.linli.news.model.DifficultyLevel
-import com.linli.news.model.Explanation
-import com.linli.news.model.RandomArticlesFilters
-import com.linli.news.model.RandomArticlesResponse
-import com.linli.news.model.RandomWithProcessingResponse
+import com.linli.news.model.*
 import com.linli.news.service.AiArticleService
 import io.swagger.v3.oas.annotations.Hidden
 import io.swagger.v3.oas.annotations.Operation
@@ -69,7 +64,7 @@ class AiArticleController(
         @RequestParam(name = "toLanguage", defaultValue = "zh-TW") toLanguage: String
     ): Page<AiArticleDetail> {
         val difficultySelection = difficulties?.takeIf { it.isNotEmpty() } ?: listOf(DifficultyLevel.NORMAL)
-        return aiArticleService.listProcessed(page, size)
+        return aiArticleService.listProcessedFiltered(page, size, difficultySelection, fromLanguage, toLanguage)
             .map { aiArticleService.toDetail(it, difficultySelection, fromLanguage, toLanguage) }
     }
 

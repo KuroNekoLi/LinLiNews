@@ -3,6 +3,7 @@ package com.linli.news.controller
 import com.linli.news.domain.Article
 import com.linli.news.domain.ArticleSource
 import com.linli.news.integration.FullTextRssClient
+import com.linli.news.jobs.BbcImportJobService
 import com.linli.news.repository.ArticleRepository
 import com.linli.news.service.AiArticleService
 import com.linli.news.service.FeedImportService
@@ -45,6 +46,9 @@ class ArticleQueryControllerTest {
 
     @MockkBean
     lateinit var aiArticleService: AiArticleService
+
+    @MockkBean
+    lateinit var bbcImportJobService: BbcImportJobService
 
     private fun sampleArticle(id: Long = 1L, sourceName: String = "BBC", section: String = "news"): Article {
         val source = ArticleSource(name = sourceName, rssUrl = "https://feed", section = section)
@@ -133,7 +137,7 @@ class ArticleQueryControllerTest {
      */
     @Test
     fun `GET article by id should return 404 when not found`() {
-        every { articleRepository.findById(999) } returns java.util.Optional.empty()
+        every { articleRepository.findById(999) } returns Optional.empty()
 
         mockMvc.get("/api/articles/999")
             .andExpect { status { isNotFound() } }

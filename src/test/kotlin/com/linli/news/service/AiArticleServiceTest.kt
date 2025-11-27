@@ -372,6 +372,25 @@ class AiArticleServiceTest {
         verify { articleAiRepository.findAll(PageRequest.of(0, 20)) }
     }
 
+    @Test
+    fun `listProcessedFiltered should only return matching difficulties`() {
+        val source = ArticleSource(name = "BBC", rssUrl = "https://test.com/rss", section = "news")
+        val article = Article(source = source, originalUrl = "https://test.com/1").apply { id = 1 }
+        val aiArticle = ArticleAi(article = article).apply { id = 1 }
+
+        val page = PageImpl(listOf(aiArticle), PageRequest.of(0, 20), 1)
+        every {
+            articleAiRepository.findByViewFilters("en", "zh-TW", listOf(DifficultyLevel.HARD), PageRequest.of(0, 20))
+        } returns page
+
+        val result = service.listProcessedFiltered(0, 20, listOf(DifficultyLevel.HARD), "en", "zh-TW")
+
+        assertEquals(1, result.content.size)
+        verify {
+            articleAiRepository.findByViewFilters("en", "zh-TW", listOf(DifficultyLevel.HARD), PageRequest.of(0, 20))
+        }
+    }
+
     // ============ getOrProcess() 測試 ============
 
     /**

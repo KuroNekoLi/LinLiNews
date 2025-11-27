@@ -10,7 +10,6 @@ import com.linli.news.model.DifficultyLevel
 import com.linli.news.service.AiArticleService
 import com.ninjasquad.springmockk.MockkBean
 import io.mockk.every
-import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
@@ -18,7 +17,6 @@ import org.springframework.data.domain.PageImpl
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
-import java.util.*
 
 /**
  * AiArticleController 單元測試
@@ -91,7 +89,15 @@ class AiArticleControllerTest {
     @Test
     fun `GET ai-articles should return 200`() {
         val page = PageImpl(listOf(sampleArticleAi(1)))
-        every { aiArticleService.listProcessed(0, 20) } returns page
+        every {
+            aiArticleService.listProcessedFiltered(
+                0,
+                20,
+                listOf(DifficultyLevel.NORMAL),
+                "en",
+                "zh-TW"
+            )
+        } returns page
         every { aiArticleService.toDetail(any(), listOf(DifficultyLevel.NORMAL), any(), any()) } returns sampleDetail()
 
         mockMvc.get("/api/ai-articles")
