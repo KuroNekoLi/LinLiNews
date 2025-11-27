@@ -1,32 +1,27 @@
 package com.linli.news.controller
 
 import com.linli.news.domain.Article
-import com.linli.news.repository.ArticleRepository
 import com.linli.news.integration.FullTextRssClient
+import com.linli.news.jobs.BbcImportJobService
+import com.linli.news.model.AiArticleDetail
+import com.linli.news.model.DifficultyLevel
+import com.linli.news.repository.ArticleRepository
+import com.linli.news.service.AiArticleService
+import io.swagger.v3.oas.annotations.Hidden
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.ArraySchema
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.tags.Tag
+import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Profile
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RequestParam
-import org.springframework.web.bind.annotation.RestController
 import org.springframework.http.ResponseEntity
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.bind.annotation.*
 import java.util.regex.Pattern
-import io.swagger.v3.oas.annotations.Operation
-import io.swagger.v3.oas.annotations.Parameter
-import io.swagger.v3.oas.annotations.media.Schema
-import io.swagger.v3.oas.annotations.tags.Tag
-import io.swagger.v3.oas.annotations.Hidden
-import com.linli.news.service.FeedImportService
-import com.linli.news.service.AiArticleService
-import com.linli.news.model.AiArticleDetail
-import com.linli.news.model.DifficultyLevel
-import org.slf4j.LoggerFactory
-import io.swagger.v3.oas.annotations.media.ArraySchema
 
 /**
  * 文章資料結構
@@ -67,7 +62,7 @@ data class ArticleDetail(
  *
  * @property articleRepository 文章資料庫存取物件
  * @property fullTextRssClient Full-Text RSS 客戶端
- * @property feedImportService RSS 匯入服務
+ * @property bbcImportJobService BBC 匯入任務服務（含互斥鎖與指標）
  * @property aiArticleService AI 文章服務
  */
 @RestController
@@ -76,7 +71,7 @@ data class ArticleDetail(
 class ArticleQueryController(
     private val articleRepository: ArticleRepository,
     private val fullTextRssClient: FullTextRssClient,
-    private val feedImportService: FeedImportService,
+    private val bbcImportJobService: BbcImportJobService,
     private val aiArticleService: AiArticleService
 ) {
     private val logger = LoggerFactory.getLogger(ArticleQueryController::class.java)
@@ -422,12 +417,10 @@ class ArticleQueryController(
      */
     @PostMapping("/admin/import-bbc")
     @Profile("!prod")
-    @Hidden
     @Operation(
         summary = "[管理] 立即匯入 BBC RSS（用於測試排程的來源）",
         description = "依 section 觸發對應 BBC RSS 的一次性匯入。支援：news、world、uk、technology、business、health、science_and_environment、entertainment_and_arts、politics、education、world_africa、world_asia、world_europe、world_middle_east、world_us_and_canada、world_latin_america（僅限非生產環境）"
     )
-    @Transactional
     fun adminImportBbc(
         @Parameter(description = "要匯入的 BBC 區塊/子分類")
         @RequestParam("section") section: String
@@ -451,19 +444,33 @@ class ArticleQueryController(
             "world_latin_america" to "https://feeds.bbci.co.uk/news/world/latin_america/rss.xml",
         )
 
-        val feedUrl = urlMap[section]
-            ?: return ResponseEntity.badRequest().body(
-                mapOf(
-                    "success" to false,
-                    "message" to "不支援的 section: $section"
-                )
+        val feedUrl = urlMap[section] ?: return ResponseEntity.badRequest().body(
+            mapOf(
+                "success" to false,
+                "message" to "不支援的 section: $section"
             )
-
-        val imported = feedImportService.importFromFeed(
-            rssUrl = feedUrl,
-            sourceName = "BBC",
-            section = section
         )
+
+        // 與排程共用同一組 Mutex/指標邏輯，避免多線程寫入時的鎖衝突
+        val imported = when (section) {
+            "news" -> bbcImportJobService.importBbcNews()
+            "world" -> bbcImportJobService.importBbcWorld()
+            "uk" -> bbcImportJobService.importBbcUk()
+            "technology" -> bbcImportJobService.importBbcTechnology()
+            "business" -> bbcImportJobService.importBbcBusiness()
+            "health" -> bbcImportJobService.importBbcHealth()
+            "science_and_environment" -> bbcImportJobService.importBbcScienceEnv()
+            "entertainment_and_arts" -> bbcImportJobService.importBbcEntertainmentArts()
+            "politics" -> bbcImportJobService.importBbcPolitics()
+            "education" -> bbcImportJobService.importBbcEducation()
+            "world_africa" -> bbcImportJobService.importBbcWorldAfrica()
+            "world_asia" -> bbcImportJobService.importBbcWorldAsia()
+            "world_europe" -> bbcImportJobService.importBbcWorldEurope()
+            "world_middle_east" -> bbcImportJobService.importBbcWorldMiddleEast()
+            "world_us_and_canada" -> bbcImportJobService.importBbcWorldUsCanada()
+            "world_latin_america" -> bbcImportJobService.importBbcWorldLatinAmerica()
+            else -> 0
+        }
 
         return ResponseEntity.ok(
             mapOf(

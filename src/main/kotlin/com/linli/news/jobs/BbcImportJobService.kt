@@ -3,11 +3,11 @@ package com.linli.news.jobs
 import com.linli.news.service.FeedImportService
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
-import org.slf4j.LoggerFactory
-import org.springframework.stereotype.Service
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.slf4j.LoggerFactory
+import org.springframework.stereotype.Service
 
 @Service
 class BbcImportJobService(
@@ -35,8 +35,8 @@ class BbcImportJobService(
      *
      * 這可以減少 SQLite 在大量寫入時出現 [SQLITE_BUSY] database is locked 的機率。
      */
-    private fun runImport(rssUrl: String, sourceName: String, section: String, jobName: String) = runBlocking {
-        importMutex.withLock {
+    private fun runImport(rssUrl: String, sourceName: String, section: String, jobName: String): Int = runBlocking {
+        importMutex.withLock<Int> {
             val timerSample = Timer.start(meterRegistry)
             var importedCount = 0
             var status = "success"
@@ -75,6 +75,8 @@ class BbcImportJobService(
                     "status", status
                 ).increment(importedCount.toDouble())
             }
+
+            importedCount
         }
     }
 

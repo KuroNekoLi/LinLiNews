@@ -269,7 +269,6 @@ ${HTML_STRUCTURE_RULES.prependIndent("          ")}
     ): String {
         val fromLangName = getLanguageDisplayName(fromLanguage)
         val difficultyInstruction = difficultyWritingInstruction(difficulty, fromLanguage)
-        val wordRangeHint = difficultyWordRangeHint(difficulty, fromLanguage)
         return """
         請依照 ${difficulty.label}（${difficulty.cefrCode}）難度，使用 $fromLanguage 原文與 $toLanguage 譯文重寫下列文章：
         標題：${title ?: "(no title)"}
@@ -287,12 +286,12 @@ ${HTML_STRUCTURE_RULES.prependIndent("          ")}
           "cleaned_text_to": string         // 純 $toLanguage 文本，不得包含 $fromLanguage 內容
         }
 
-        難度與篇幅要求：$wordRangeHint
+        難度與寫作指引：
         $difficultyInstruction
         **重要限制**：
-        1. 文章段落必須至少 4 段，每段使用 <p> 包裹，句子數量請依難度自然調整。
+        1. 文章段落與結構請嚴格遵守上述「難度設定」要求，每段使用 <p> 包裹。
         2. 必須保留原始 HTML 內所有圖片相關元素（figure、img、figcaption），位置盡量對應。
-        3. 產出${fromLangName}標題並維持正式、精確的語氣。
+        3. 產出${fromLangName}標題。
         4. **`cleaned_text_from` 必須是完整的純 $fromLanguage 文本，不得包含任何 $toLanguage 內容或雙語對照格式。**
         5. **`cleaned_text_to` 必須是完整的純 $toLanguage 文本，不得包含任何 $fromLanguage 內容或雙語對照格式。**
         6. **`optimized_html_from` 和 `optimized_html_to` 同樣必須各自保持單一語言，不得混雜。**
@@ -369,49 +368,46 @@ ${EXPLANATION_JSON_SCHEMA.prependIndent("          ")}
      * 依難度提供寫作指引文字。
      */
     private fun difficultyWritingInstruction(difficulty: DifficultyLevel, fromLanguage: String = "en"): String {
-        val fromLangName = getLanguageDisplayName(fromLanguage)
         return when (difficulty) {
+            DifficultyLevel.VERY_EASY -> """
+            1. Target Audience: This version is for A2 learners / beginning-level readers.
+            2. Language Control: Use basic vocabulary and simple sentence structures (Subject + Verb + Object). Avoid subordinate clauses and complex conjunctions.
+            3. Structure: 2–4 paragraphs, each containing 1–3 sentences.
+            4. Tone: Informal, simple, and clear.
+        """.trimIndent()
+
             DifficultyLevel.EASY -> """
-            - 使用 B1 層級（Easy），篇幅約 300–600 個${fromLangName}字。
-            - 採用日常熟悉但具深度的語彙與句型，可描述經驗、事件或計畫。
-            - 結構清晰（引言→主體→結論），語氣中等正式，避免過度專業術語。
+            1. Target Audience: This version is for B1 learners.
+            2. Language Control: Use simple narration and common vocabulary. Include simple conjunctions and a few complex sentences, ensuring the text remains coherent and easy to understand.
+            3. Structure: 3–5 paragraphs, each containing 2–4 sentences.
+            4. Tone: Conversational, simple, and clear.
         """.trimIndent()
 
             DifficultyLevel.NORMAL -> """
-            - 使用 B2 層級（Normal），篇幅約 600–900 個${fromLangName}字。
-            - 能比較多個觀點並討論優缺點，句型中等複雜且連貫。
-            - 保持中等正式語氣，適合通用學術或職場讀者。
+            1. Target Audience: This version is for B2 learners.
+            2. Language Control: Use intermediate vocabulary and moderately complex sentences (including relative clauses). Use simple transitions and provide adequate background or explanation.
+            3. Structure: 4–6 paragraphs, each containing 3–5 sentences.
+            4. Tone: Moderately formal / standard news tone.
         """.trimIndent()
 
             DifficultyLevel.HARD -> """
-            - 使用 C1 層級（Hard），篇幅約 900–1,200 個${fromLangName}字。
-            - 針對複雜主題深入分析，提出觀點並以例證支持。
-            - 句型多樣、詞彙高階且明晰，風格專業但保持可讀性。
+            1. Target Audience: This version is for C1 learners.
+            2. Language Control: Use complex sentence structures (including passive voice) and high-level vocabulary. Include detailed background analysis, quotes, or data.
+            3. Structure: 5 or more paragraphs, each containing 4–6 sentences. You may use subheadings if appropriate.
+            4. Tone: Formal, analytical, and professional.
         """.trimIndent()
 
             DifficultyLevel.VERY_HARD -> """
-            - 使用 C2 層級（VeryHard），篇幅至少 1,200 個${fromLangName}字。
-            - 語言流暢成熟，可解釋複雜概念並辨識細微意涵，加入文化或背景知識。
-            - 風格正式、批判性或分析性皆可，但避免簡化或重複字詞。
+            1. Target Audience: This version is for C2 learners / Native-level readers.
+            2. Language Control: Use professional vocabulary, complex syntax, and abstract concepts. Include in-depth analysis, critique, or multiple perspectives.
+            3. Structure: Flexible structure (Background -> Body -> Analysis -> Conclusion). Paragraphs and sentences can be longer and more complex.
+            4. Tone: Highly formal, academic, or professional.
         """.trimIndent()
         }
     }
 
     /**
-     * 依難度產生篇幅提示文字。
-     */
-    private fun difficultyWordRangeHint(difficulty: DifficultyLevel, fromLanguage: String): String {
-        val fromLangName = getLanguageDisplayName(fromLanguage)
-        return when (difficulty) {
-            DifficultyLevel.EASY -> "300–600 個${fromLangName}單字"
-            DifficultyLevel.NORMAL -> "600–900 個${fromLangName}單字"
-            DifficultyLevel.HARD -> "900–1,200 個${fromLangName}單字"
-            DifficultyLevel.VERY_HARD -> "至少 1,200 個${fromLangName}單字"
-        }
-    }
-
-    /**
-     * 依難度調整教學解析的說明文字。
+     * 依難度調整教學解析的說明文字.
      */
     private fun explanationTaskDescription(
         difficulty: DifficultyLevel,
@@ -423,11 +419,18 @@ ${EXPLANATION_JSON_SCHEMA.prependIndent("          ")}
         val bilingualDesc = "${fromLangName}${toLangName}"
 
         return when (difficulty) {
+            DifficultyLevel.VERY_EASY -> """
+            - Vocabulary：挑選 A2 層級的基礎字彙（如日常、學校、家庭），提供詞性、${bilingualDesc}釋義與極簡短的例句。
+            - Grammar：聚焦基礎時態（現在/過去簡單式）與 SVO 句構，${bilingualDesc}解說需極為淺白。
+            - Sentence patterns / Phrases：極基礎句型（如 There is/are, I like...），附${bilingualDesc}解說與生活化例句。
+            - Comprehension Q&A：4 題四選一，題目、選項與答案皆提供雙語，問題應直觀且答案明顯。
+        """.trimIndent()
+
             DifficultyLevel.EASY -> """
             - Vocabulary：挑選符合 B1 的中階字彙，提供詞性、${bilingualDesc}釋義與生活情境例句，避免過於初級或過度專業的用詞。
             - Grammar：聚焦文章相關的核心時態或句型，給出雙語重點與例句，解說務必直白清晰且可立即運用。
             - Sentence patterns / Phrases / Idioms：介紹實用句型與片語，附上雙語解說與例句，句子不要過長，避免太艱澀的習語。
-            - Comprehension Q&A：4 題四選一，題目、選項與答案都需 ${fromLangName}/${toLangName}，解析用淺白${toLangName}說明常見迷思或易混淆處。
+            - Comprehension Q&A：4 題四選一，題目、選項與答案都提供雙語，解析用淺白${toLangName}說明常見迷思或易混淆處。
         """.trimIndent()
 
             DifficultyLevel.NORMAL -> """
@@ -453,3 +456,4 @@ ${EXPLANATION_JSON_SCHEMA.prependIndent("          ")}
         }
     }
 }
+
