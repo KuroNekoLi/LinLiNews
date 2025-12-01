@@ -26,7 +26,9 @@ import java.util.regex.Pattern
 class AiArticleService(
     private val articleRepository: ArticleRepository,
     private val articleAiRepository: ArticleAiRepository,
-    private val aiProcessor: AiArticleProcessorService
+    private val aiProcessor: AiArticleProcessorService,
+    private val articleTagService: ArticleTagService,
+    private val featuredCollectionService: FeaturedCollectionService
 ) {
 
     companion object {
@@ -1260,6 +1262,35 @@ class AiArticleService(
         val summaryFrom = selectedView?.summaryFrom
         val summaryTo = selectedView?.summaryTo
 
+        // 取得 tags 和 collections
+        val tags = try {
+            articleTagService.getArticleTags(articleId).map { tag ->
+                ArticleTagSummary(
+                    id = tag.id,
+                    name = tag.name,
+                    description = tag.description,
+                    score = tag.score
+                )
+            }
+        } catch (ex: Exception) {
+            emptyList()
+        }
+
+        val collections = try {
+            featuredCollectionService.getArticleCollections(articleId).map { coll ->
+                FeaturedCollectionSummary(
+                    collectionId = coll.collectionId,
+                    title = coll.title,
+                    subtitle = coll.subtitle,
+                    colorStart = coll.colorStart,
+                    colorEnd = coll.colorEnd,
+                    score = coll.score
+                )
+            }
+        } catch (ex: Exception) {
+            emptyList()
+        }
+
         return AiArticleDetail(
             id = articleId,
             sourceName = article.source.name,
@@ -1280,7 +1311,9 @@ class AiArticleService(
             toLanguage = finalToLang,
             content = difficultyContent,
             availableDifficulties = availableForPair,
-            availableViews = availableViews
+            availableViews = availableViews,
+            tags = tags,
+            featuredCollections = collections
         )
     }
 

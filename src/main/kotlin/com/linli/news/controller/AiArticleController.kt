@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.linli.news.model.*
 import com.linli.news.service.AiArticleService
+import com.linli.news.service.ArticleEmbeddingService
+import com.linli.news.service.RelatedArticleDto
 import io.swagger.v3.oas.annotations.Hidden
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -30,7 +32,8 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/api/ai-articles")
 @Tag(name = "AI 文章 API", description = "取得 AI 已處理的文章、或按需處理單篇並落地")
 class AiArticleController(
-    private val aiArticleService: AiArticleService
+    private val aiArticleService: AiArticleService,
+    private val articleEmbeddingService: ArticleEmbeddingService
 ) {
     private val logger = LoggerFactory.getLogger(AiArticleController::class.java)
 
@@ -305,10 +308,10 @@ class AiArticleController(
     @PostMapping("/{id}/reprocess-with-debug")
     @Profile("!prod")
     @Hidden
-        @Operation(
-            summary = "[測試] 重新處理並診斷",
-            description = "測試用端點，重新處理文章並回傳詳細診斷信息（僅限非生產環境）"
-        )
+    @Operation(
+        summary = "[測試] 重新處理並診斷",
+        description = "測試用端點，重新處理文章並回傳詳細診斷信息（僅限非生產環境）"
+    )
     fun reprocessArticleWithDebug(
         @PathVariable id: Long,
         @RequestParam(name = "difficulty", required = false)
@@ -409,4 +412,20 @@ class AiArticleController(
         }
     }
 
+    @GetMapping("/{articleId}/related")
+    @Operation(
+        summary = "取得相關文章",
+        description = "根據語義向量計算與指定文章最相似的其他文章"
+    )
+    fun relatedArticles(
+        @PathVariable articleId: Long,
+        @Parameter(description = "返回的最大篇數（1-10）")
+        @RequestParam(name = "limit", defaultValue = "5") limit: Int,
+        @Parameter(description = "最小相似度（0-1）")
+        @RequestParam(name = "minScore", defaultValue = "0.6") minScore: Double
+    ): List<RelatedArticleDto> {
+        val safeLimit = limit.coerceIn(1, 10)
+        val safeMinScore = minScore.coerceIn(0.0, 0.99)
+        return articleEmbeddingService.findRelatedArticles(articleId, safeLimit, safeMinScore)
+    }
 }
