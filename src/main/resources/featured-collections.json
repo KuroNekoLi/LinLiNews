@@ -1,0 +1,66 @@
+[
+  {
+    "id": "TOEIC",
+    "title": "多益必考單字",
+    "subtitle": "商業 / 職場",
+    "description": "Business English articles about office communication, workplace meetings, corporate emails, professional presentations, business negotiations, and TOEIC test preparation topics",
+    "colorStart": "#EF5350",
+    "colorEnd": "#FF8A65"
+  },
+  {
+    "id": "TECH",
+    "title": "AI 科技趨勢",
+    "subtitle": "ChatGPT & More",
+    "description": "Artificial intelligence, ChatGPT, machine learning, technology innovation, software development, digital transformation, tech industry news, and emerging technologies",
+    "colorStart": "#5C6BC0",
+    "colorEnd": "#26C6DA"
+  },
+  {
+    "id": "TRAVEL",
+    "title": "旅遊英語實戰",
+    "subtitle": "機場 / 飯店",
+    "description": "Travel English conversations at airports, hotels, restaurants, tourist attractions, booking accommodations, asking for directions, and practical travel communication",
+    "colorStart": "#FFA726",
+    "colorEnd": "#FFEE58"
+  },
+  {
+    "id": "HEALTH",
+    "title": "健康醫療",
+    "subtitle": "Health & Wellness",
+    "description": "Healthcare news, medical research, wellness tips, mental health, diseases, treatments, healthy lifestyle, nutrition, and fitness topics",
+    "colorStart": "#66BB6A",
+    "colorEnd": "#81C784"
+  },
+  {
+    "id": "ENVIRONMENT",
+    "title": "環境永續",
+    "subtitle": "Climate & Nature",
+    "description": "Climate change, environmental protection, sustainability, renewable energy, conservation, wildlife, ocean health, and green technology",
+    "colorStart": "#26A69A",
+    "colorEnd": "#4DB6AC"
+  },
+  {
+    "id": "FINANCE",
+    "title": "財經金融",
+    "subtitle": "Markets & Economy",
+    "description": "Financial markets, stock trading, banking, investment strategies, cryptocurrency, economic indicators, business finance, and money management",
+    "colorStart": "#42A5F5",
+    "colorEnd": "#64B5F6"
+  },
+  {
+    "id": "EDUCATION",
+    "title": "教育學習",
+    "subtitle": "Learning & Schools",
+    "description": "Education system, teaching methods, university news, student life, academic research, online learning, educational technology, and language learning",
+    "colorStart": "#AB47BC",
+    "colorEnd": "#BA68C8"
+  },
+  {
+    "id": "POLITICS",
+    "title": "國際政治",
+    "subtitle": "Global Affairs",
+    "description": "International politics, government policies, elections, diplomacy, geopolitical issues, political leaders, and world affairs",
+    "colorStart": "#EC407A",
+    "colorEnd": "#F06292"
+  }
+]
