@@ -8,6 +8,8 @@ import com.linli.news.model.AiViewAvailability
 import com.linli.news.model.DifficultyContent
 import com.linli.news.model.DifficultyLevel
 import com.linli.news.service.AiArticleService
+import com.linli.news.service.ArticleEmbeddingService
+import com.linli.news.service.RelatedArticleDto
 import com.ninjasquad.springmockk.MockkBean
 import io.mockk.every
 import org.junit.jupiter.api.Test
@@ -36,6 +38,9 @@ class AiArticleControllerTest {
 
     @MockkBean
     lateinit var aiArticleService: AiArticleService
+
+    @MockkBean
+    lateinit var articleEmbeddingService: ArticleEmbeddingService
 
     private fun sampleArticleAi(id: Long = 1L): ArticleAi {
         val source = ArticleSource(name = "BBC", rssUrl = "https://feed", section = "news").apply { this.id = 100 }
@@ -180,6 +185,16 @@ class AiArticleControllerTest {
         every { aiArticleService.toDetail(any(), listOf(DifficultyLevel.NORMAL), any(), any()) } returns sampleDetail()
 
         mockMvc.get("/api/ai-articles/random?count=5&section=technology")
+            .andExpect { status { isOk() } }
+    }
+
+    @Test
+    fun `GET related articles should return 200`() {
+        every { articleEmbeddingService.findRelatedArticles(1, 5, 0.6) } returns listOf(
+            RelatedArticleDto(id = 2, title = "Title 2", excerpt = "excerpt", score = 0.8)
+        )
+
+        mockMvc.get("/api/ai-articles/1/related")
             .andExpect { status { isOk() } }
     }
 }

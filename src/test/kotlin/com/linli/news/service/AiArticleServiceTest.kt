@@ -33,11 +33,15 @@ class AiArticleServiceTest {
     private val articleRepository = mockk<ArticleRepository>()
     private val articleAiRepository = mockk<ArticleAiRepository>()
     private val aiProcessor = mockk<AiArticleProcessorService>()
+    private val articleTagService = mockk<ArticleTagService>(relaxed = true)
+    private val featuredCollectionService = mockk<FeaturedCollectionService>(relaxed = true)
 
     private val service = AiArticleService(
         articleRepository = articleRepository,
         articleAiRepository = articleAiRepository,
-        aiProcessor = aiProcessor
+        aiProcessor = aiProcessor,
+        articleTagService = articleTagService,
+        featuredCollectionService = featuredCollectionService
     )
 
     private val objectMapper = ObjectMapper()

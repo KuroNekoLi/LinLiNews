@@ -25,20 +25,23 @@ class FeedImportServiceTest {
 
     private val fullTextRssClient = mockk<FullTextRssClient>()
     private val feedImportTxService = mockk<FeedImportTxService>()
-    private val fullTextRssProperties = mockk<FullTextRssProperties>()
+    private val fullTextRssProperties = FullTextRssProperties(baseUrl = "http://localhost:8085", enabled = true)
+    private val articleEmbeddingService = mockk<ArticleEmbeddingService>(relaxed = true)
+    private val articleTagService = mockk<ArticleTagService>(relaxed = true)
+    private val featuredCollectionService = mockk<FeaturedCollectionService>(relaxed = true)
 
     private val service = FeedImportService(
         fullTextRssClient = fullTextRssClient,
         feedImportTxService = feedImportTxService,
-        fullTextRssProperties = fullTextRssProperties
+        fullTextRssProperties = fullTextRssProperties,
+        articleEmbeddingService = articleEmbeddingService,
+        articleTagService = articleTagService,
+        featuredCollectionService = featuredCollectionService
     )
 
     @Test
     fun `should import valid articles and filter invalid ones`() {
         val rssUrl = "https://feeds.example.com/rss.xml"
-
-        // Mock Full-Text RSS 為啟用狀態
-        every { fullTextRssProperties.enabled } returns true
 
         // ArticleSource 行為
         val savedSource = ArticleSource(name = "BBC", rssUrl = rssUrl, section = "news").apply { id = 1 }

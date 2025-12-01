@@ -59,7 +59,35 @@ data class AiArticleDetail(
 
     @field:JsonProperty("available_views")
     @Schema(description = "所有視圖（語言+難度）的摘要清單")
-    val availableViews: List<AiViewAvailability> = emptyList()
+    val availableViews: List<AiViewAvailability> = emptyList(),
+
+    @field:Schema(description = "文章的 tags（依相似度排序）")
+    val tags: List<ArticleTagSummary> = emptyList(),
+
+    @field:JsonProperty("featured_collections")
+    @field:Schema(description = "所屬的精選專題（依相似度排序）")
+    val featuredCollections: List<FeaturedCollectionSummary> = emptyList()
+)
+
+@Schema(name = "ArticleTagSummary", description = "文章 Tag 摘要")
+data class ArticleTagSummary(
+    val id: Long,
+    val name: String,
+    val description: String?,
+    val score: Double
+)
+
+@Schema(name = "FeaturedCollectionSummary", description = "精選專題摘要")
+data class FeaturedCollectionSummary(
+    @field:JsonProperty("collection_id")
+    val collectionId: String,
+    val title: String,
+    val subtitle: String?,
+    @field:JsonProperty("color_start")
+    val colorStart: String?,
+    @field:JsonProperty("color_end")
+    val colorEnd: String?,
+    val score: Double
 )
 
 @Schema(name = "AiViewAvailability", description = "可用視圖（語言對＋難度）")
