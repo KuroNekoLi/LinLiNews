@@ -28,6 +28,7 @@ class ArticleTagService(
     private val articleTagDefinitionRepository: ArticleTagDefinitionRepository,
     private val articleTagAssignmentRepository: ArticleTagAssignmentRepository,
     private val articleEmbeddingRepository: ArticleEmbeddingRepository,
+    private val articleRepository: com.linli.news.repository.ArticleRepository,
     private val openAiEmbeddingService: OpenAiEmbeddingService,
     @Value("\${openai.embedding-model:text-embedding-3-small}") private val embeddingModel: String,
     @Value("\${article.tag.max-tags:5}") private val maxTags: Int,
@@ -125,6 +126,43 @@ class ArticleTagService(
                 )
             }
             .sortedByDescending { it.score }
+    }
+
+    /**
+     * 根據 tag 名稱列表直接配對文章（由 AI 生成時調用）
+     * @param articleId 文章 ID
+     * @param tagNames AI 回傳的 tag 名稱列表
+     */
+    @Transactional
+    fun assignTagsByName(articleId: Long, tagNames: List<String>) {
+        val article = articleRepository.findById(articleId).orElse(null)
+        if (article == null) {
+            logger.warn("Article {} not found, cannot assign tags", articleId)
+            return
+        }
+
+        // 刪除舊的配對
+        articleTagAssignmentRepository.deleteByArticle_Id(articleId)
+
+        // 根據名稱查找 tag 定義並配對
+        var assigned = 0
+        tagNames.forEach { tagName ->
+            val tag = articleTagDefinitionRepository.findByName(tagName)
+            if (tag != null) {
+                articleTagAssignmentRepository.save(
+                    ArticleTagAssignment(
+                        article = article,
+                        tag = tag,
+                        score = 1.0 // AI 判斷的 tag，給予滿分
+                    )
+                )
+                assigned++
+            } else {
+                logger.warn("Tag '{}' not found in database", tagName)
+            }
+        }
+
+        logger.info("Assigned {} AI-generated tags to article {}", assigned, articleId)
     }
 
     /**

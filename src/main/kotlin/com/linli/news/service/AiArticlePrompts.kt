@@ -115,7 +115,9 @@ object AiArticlePrompts {
                 "explanation_to": string
               }
             ]
-        }
+        },
+        "tags": [string],                      // 文章相關的主題標籤（3-5個）
+        "featured_collections": [string]       // 文章適合的精選專題ID（0-2個）
     """.trimIndent()
 
     /**
@@ -304,10 +306,25 @@ ${HTML_STRUCTURE_RULES.prependIndent("          ")}
     fun teachingStage2SystemPrompt(
         difficulty: DifficultyLevel,
         fromLanguage: String,
-        toLanguage: String
+        toLanguage: String,
+        availableTags: List<String>,
+        availableCollections: List<Pair<String, String>> // (id, description)
     ): String {
         val fromLangName = getLanguageDisplayName(fromLanguage)
         val explanationTask = explanationTaskDescription(difficulty, fromLanguage, toLanguage)
+
+        val tagsInstruction = """
+        5) 從以下標籤清單中選擇 3-5 個最符合文章主題的標籤：
+           ${availableTags.joinToString(", ")}
+           選擇標準：標籤必須與文章的核心主題高度相關
+        """.trimIndent()
+
+        val collectionsInstruction = """
+        6) 從以下精選專題中選擇 0-2 個最適合的專題ID（可以不選）：
+           ${availableCollections.joinToString("\n           ") { "${it.first}: ${it.second}" }}
+           選擇標準：文章內容必須與專題描述高度吻合（相似度 >= 60%）
+        """.trimIndent()
+
         return """
         你是專業的${fromLangName}新聞教學助手，需依 ${difficulty.label}（${difficulty.cefrCode}）難度撰寫教學。
         - 原文語言：$fromLanguage
@@ -321,6 +338,8 @@ $explanationTask
            - `summary_to`：`summary_from` 的 $toLanguage 翻譯。
         4) HTML 結構必須遵守以下規則：
 ${HTML_STRUCTURE_RULES.prependIndent("           ")}
+        $tagsInstruction
+        $collectionsInstruction
         僅輸出 JSON 物件，不要多餘文字。
     """.trimIndent()
     }
@@ -361,6 +380,8 @@ ${EXPLANATION_JSON_SCHEMA.prependIndent("          ")}
         2. 確保提供雙語標題（title_from 與 title_to）。
         3. 確保提供 $fromLangName 與 $toLangName 摘要，各至少 3 點，使用條列式列出。
         4. 單字、文法、片語、例句不需要html格式，像是不需要<p>
+        5. 必須選擇 3-5 個最相關的 tags（從系統提示的清單中選擇）
+        6. 選擇 0-2 個最適合的 featured_collections ID（若無特別合適可為空陣列）
     """.trimIndent()
     }
 

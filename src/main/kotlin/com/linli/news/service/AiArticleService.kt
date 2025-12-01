@@ -504,6 +504,35 @@ class AiArticleService(
         entity.applyFrom(json, optimizedResult, difficulty, normalizedFrom, normalizedTo)
 
         val savedEntity = articleAiRepository.save(entity)
+
+        // 從 AI 回應中提取並保存 tags 和 collections
+        try {
+            val tagsArray = json.path("tags")
+            if (tagsArray.isArray && tagsArray.size() > 0) {
+                val tagNames = tagsArray.map { it.asText() }.filter { it.isNotBlank() }
+                if (tagNames.isNotEmpty()) {
+                    articleTagService.assignTagsByName(articleId, tagNames)
+                    logger.info("Assigned {} tags to article {}: {}", tagNames.size, articleId, tagNames)
+                }
+            }
+
+            val collectionsArray = json.path("featured_collections")
+            if (collectionsArray.isArray && collectionsArray.size() > 0) {
+                val collectionIds = collectionsArray.map { it.asText() }.filter { it.isNotBlank() }
+                if (collectionIds.isNotEmpty()) {
+                    featuredCollectionService.assignCollectionsById(articleId, collectionIds)
+                    logger.info(
+                        "Assigned {} collections to article {}: {}",
+                        collectionIds.size,
+                        articleId,
+                        collectionIds
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            logger.warn("Failed to assign tags/collections to article {}: {}", articleId, e.message)
+        }
+
         logger.info(
             "Save successful for article ID {} in {}ms (existing={}, views={})",
             articleId,

@@ -31,6 +31,7 @@ class FeaturedCollectionService(
     private val featuredCollectionRepository: FeaturedCollectionRepository,
     private val articleFeaturedCollectionAssignmentRepository: ArticleFeaturedCollectionAssignmentRepository,
     private val articleEmbeddingRepository: ArticleEmbeddingRepository,
+    private val articleRepository: com.linli.news.repository.ArticleRepository,
     private val openAiEmbeddingService: OpenAiEmbeddingService,
     @Value("\${openai.embedding-model:text-embedding-3-small}") private val embeddingModel: String,
     @Value("\${article.collection.max-collections:2}") private val maxCollections: Int,
@@ -146,6 +147,43 @@ class FeaturedCollectionService(
                 )
             }
             .sortedByDescending { it.score }
+    }
+
+    /**
+     * 根據專題 ID 列表直接配對文章（由 AI 生成時調用）
+     * @param articleId 文章 ID
+     * @param collectionIds AI 回傳的專題 ID 列表
+     */
+    @Transactional
+    fun assignCollectionsById(articleId: Long, collectionIds: List<String>) {
+        val article = articleRepository.findById(articleId).orElse(null)
+        if (article == null) {
+            logger.warn("Article {} not found, cannot assign collections", articleId)
+            return
+        }
+
+        // 刪除舊的配對
+        articleFeaturedCollectionAssignmentRepository.deleteByArticle_Id(articleId)
+
+        // 根據 collectionId 查找專題並配對
+        var assigned = 0
+        collectionIds.forEach { collectionId ->
+            val collection = featuredCollectionRepository.findByCollectionId(collectionId)
+            if (collection != null) {
+                articleFeaturedCollectionAssignmentRepository.save(
+                    ArticleFeaturedCollectionAssignment(
+                        article = article,
+                        collection = collection,
+                        score = 1.0 // AI 判斷的專題，給予滿分
+                    )
+                )
+                assigned++
+            } else {
+                logger.warn("Collection '{}' not found in database", collectionId)
+            }
+        }
+
+        logger.info("Assigned {} AI-generated collections to article {}", assigned, articleId)
     }
 
     /**

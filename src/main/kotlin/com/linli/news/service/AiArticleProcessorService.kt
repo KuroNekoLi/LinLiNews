@@ -31,6 +31,25 @@ class AiArticleProcessorService(
     private val logger = LoggerFactory.getLogger(AiArticleProcessorService::class.java)
     private val objectMapper = ObjectMapper()
 
+    // 讀取候選 tags 和 collections（從 JSON 檔案）
+    private val availableTags: List<String> by lazy {
+        val resource = this::class.java.classLoader.getResourceAsStream("tag-definitions.json")
+        resource?.use {
+            val tree = objectMapper.readTree(it)
+            tree.map { node -> node.path("name").asText() }
+        } ?: emptyList()
+    }
+
+    private val availableCollections: List<Pair<String, String>> by lazy {
+        val resource = this::class.java.classLoader.getResourceAsStream("featured-collections.json")
+        resource?.use {
+            val tree = objectMapper.readTree(it)
+            tree.map { node ->
+                node.path("id").asText() to node.path("description").asText()
+            }
+        } ?: emptyList()
+    }
+
     private val client: RestClient = RestClient.builder()
         .baseUrl(baseUrl)
         .defaultHeader("Authorization", "Bearer $apiKey")
@@ -300,7 +319,13 @@ class AiArticleProcessorService(
             throw IllegalArgumentException("Rewritten text is empty; cannot generate teaching materials")
         }
 
-        val systemPrompt = AiArticlePrompts.teachingStage2SystemPrompt(difficulty, fromLanguage, toLanguage)
+        val systemPrompt = AiArticlePrompts.teachingStage2SystemPrompt(
+            difficulty,
+            fromLanguage,
+            toLanguage,
+            availableTags,
+            availableCollections
+        )
         val userPrompt = AiArticlePrompts
             .teachingStage2UserPrompt(difficulty, title ?: "(no title)", rewrittenText, fromLanguage, toLanguage)
 
