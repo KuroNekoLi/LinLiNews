@@ -1,6 +1,7 @@
 package com.linli.news.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import org.slf4j.LoggerFactory
 import org.springframework.boot.CommandLineRunner
@@ -40,7 +41,7 @@ class TagAndCollectionBootstrapRunner(
 ) : CommandLineRunner {
 
     private val logger = LoggerFactory.getLogger(TagAndCollectionBootstrapRunner::class.java)
-    private val objectMapper = ObjectMapper()
+    private val objectMapper = jacksonObjectMapper()
 
     override fun run(vararg args: String?) {
         logger.info("Starting tag and collection bootstrap...")
