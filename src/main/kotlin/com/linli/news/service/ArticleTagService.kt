@@ -130,6 +130,7 @@ class ArticleTagService(
     /**
      * 批次為所有文章配對 tags
      */
+    @Transactional
     fun assignTagsToAllArticles() {
         val allEmbeddings = articleEmbeddingRepository.findAll()
         var processed = 0

@@ -151,6 +151,7 @@ class FeaturedCollectionService(
     /**
      * 批次為所有文章配對精選專題
      */
+    @Transactional
     fun assignCollectionsToAllArticles() {
         val allEmbeddings = articleEmbeddingRepository.findAll()
         var processed = 0
