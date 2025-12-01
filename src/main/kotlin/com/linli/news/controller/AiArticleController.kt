@@ -428,4 +428,32 @@ class AiArticleController(
         val safeMinScore = minScore.coerceIn(0.0, 0.99)
         return articleEmbeddingService.findRelatedArticles(articleId, safeLimit, safeMinScore)
     }
+
+    @PostMapping("/backfill-tags-and-collections")
+    @Operation(
+        summary = "補充缺失的 Tags 和精選專題",
+        description = "檢查所有 AI 文章，如果 tags 和精選專題都為空，則調用 AI 重新生成並配對"
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "補充完成",
+                content = [Content(
+                    mediaType = "application/json",
+                    schema = Schema(implementation = BackfillResponse::class)
+                )]
+            ),
+            ApiResponse(responseCode = "429", description = "AI 配額或速率限制"),
+            ApiResponse(responseCode = "500", description = "伺服器處理錯誤")
+        ]
+    )
+    fun backfillTagsAndCollections(
+        @Parameter(description = "是否強制重新生成（即使已有 tags/collections）")
+        @RequestParam(name = "force", defaultValue = "false") force: Boolean,
+        @Parameter(description = "處理文章數量限制（0 表示全部）")
+        @RequestParam(name = "limit", defaultValue = "0") limit: Int
+    ): BackfillResponse {
+        return aiArticleService.backfillTagsAndCollections(force, limit)
+    }
 }

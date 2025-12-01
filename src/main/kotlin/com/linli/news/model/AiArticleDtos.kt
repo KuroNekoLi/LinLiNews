@@ -272,3 +272,35 @@ data class RandomWithProcessingResponse(
     @field:Schema(description = "文章清單")
     val articles: List<AiArticleDetail>
 )
+
+@Schema(name = "BackfillResponse", description = "Tags 和精選專題補充結果")
+data class BackfillResponse(
+    @field:Schema(description = "檢查的文章總數")
+    val totalChecked: Int,
+    @field:Schema(description = "需要補充的文章數量")
+    val needsBackfill: Int,
+    @field:Schema(description = "成功處理的文章數量")
+    val successCount: Int,
+    @field:Schema(description = "失敗的文章數量")
+    val failedCount: Int,
+    @field:Schema(description = "跳過的文章數量（已有 tags/collections）")
+    val skippedCount: Int,
+    @field:Schema(description = "處理詳情")
+    val details: List<BackfillDetail>
+)
+
+@Schema(name = "BackfillDetail", description = "單篇文章補充詳情")
+data class BackfillDetail(
+    @field:Schema(description = "文章 ID")
+    val articleId: Long,
+    @field:Schema(description = "文章標題")
+    val title: String,
+    @field:Schema(description = "處理狀態: success, failed, skipped")
+    val status: String,
+    @field:Schema(description = "配對的 tags 數量")
+    val tagsAssigned: Int,
+    @field:Schema(description = "配對的精選專題數量")
+    val collectionsAssigned: Int,
+    @field:Schema(description = "錯誤訊息（如果失敗）")
+    val errorMessage: String? = null
+)

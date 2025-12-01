@@ -1514,4 +1514,169 @@ class AiArticleService(
         if (html == null) return null
         return htmlTagPattern.matcher(html).replaceAll("")
     }
+
+    /**
+     * 補充缺失的 Tags 和精選專題
+     *
+     * 檢查所有 AI 文章，如果 tags 和精選專題都為空，則重新調用 AI 生成並配對
+     *
+     * @param force 是否強制重新生成（即使已有 tags/collections）
+     * @param limit 處理文章數量限制（0 表示全部）
+     * @return 補充結果統計
+     */
+    @Transactional
+    fun backfillTagsAndCollections(force: Boolean, limit: Int): BackfillResponse {
+        val startTime = System.currentTimeMillis()
+        logger.info("Starting backfill tags and collections (force=$force, limit=$limit)")
+
+        // 取得所有 AI 文章
+        val allAiArticles = articleAiRepository.findAll()
+        val articlesToProcess = if (limit > 0) allAiArticles.take(limit) else allAiArticles
+
+        val details = mutableListOf<BackfillDetail>()
+        var successCount = 0
+        var failedCount = 0
+        var skippedCount = 0
+        var needsBackfill = 0
+
+        articlesToProcess.forEach { aiArticle ->
+            val articleId = aiArticle.article.id ?: return@forEach
+            val title = aiArticle.title ?: aiArticle.article.title ?: "Untitled"
+
+            try {
+                // 檢查是否有 tags 和 collections
+                val hasTags = articleTagService.getArticleTags(articleId).isNotEmpty()
+                val hasCollections = featuredCollectionService.getArticleCollections(articleId).isNotEmpty()
+
+                if (!force && (hasTags || hasCollections)) {
+                    // 已有 tags 或 collections，跳過
+                    skippedCount++
+                    details.add(
+                        BackfillDetail(
+                            articleId = articleId,
+                            title = title,
+                            status = "skipped",
+                            tagsAssigned = if (hasTags) articleTagService.getArticleTags(articleId).size else 0,
+                            collectionsAssigned = if (hasCollections) featuredCollectionService.getArticleCollections(
+                                articleId
+                            ).size else 0
+                        )
+                    )
+                    return@forEach
+                }
+
+                needsBackfill++
+
+                // 取得文章的第一個 view 來重新生成 tags 和 collections
+                val firstView = aiArticle.views.firstOrNull()
+                if (firstView == null) {
+                    logger.warn("Article {} has no views, skipping", articleId)
+                    skippedCount++
+                    details.add(
+                        BackfillDetail(
+                            articleId = articleId,
+                            title = title,
+                            status = "skipped",
+                            tagsAssigned = 0,
+                            collectionsAssigned = 0,
+                            errorMessage = "No views available"
+                        )
+                    )
+                    return@forEach
+                }
+
+                // 使用 cleanedTextFrom 來重新生成 tags 和 collections
+                val cleanedText = firstView.cleanedTextFrom
+                if (cleanedText.isNullOrBlank()) {
+                    logger.warn("Article {} has no cleaned text, skipping", articleId)
+                    skippedCount++
+                    details.add(
+                        BackfillDetail(
+                            articleId = articleId,
+                            title = title,
+                            status = "skipped",
+                            tagsAssigned = 0,
+                            collectionsAssigned = 0,
+                            errorMessage = "No cleaned text available"
+                        )
+                    )
+                    return@forEach
+                }
+
+                // 調用 AI teachingStage2 來生成 tags 和 collections
+                logger.info("Backfilling tags and collections for article {}", articleId)
+                val stage2Result = aiProcessor.teachingStage2(
+                    firstView.difficulty,
+                    firstView.titleFrom ?: title,
+                    cleanedText,
+                    firstView.fromLanguage,
+                    firstView.toLanguage
+                )
+
+                // 從 AI 回應中提取並保存 tags 和 collections
+                var tagsAssigned = 0
+                var collectionsAssigned = 0
+
+                val tagsArray = stage2Result.path("tags")
+                if (tagsArray.isArray && tagsArray.size() > 0) {
+                    val tagNames = tagsArray.map { it.asText() }.filter { it.isNotBlank() }
+                    if (tagNames.isNotEmpty()) {
+                        articleTagService.assignTagsByName(articleId, tagNames)
+                        tagsAssigned = tagNames.size
+                        logger.info("Assigned {} tags to article {}", tagsAssigned, articleId)
+                    }
+                }
+
+                val collectionsArray = stage2Result.path("featured_collections")
+                if (collectionsArray.isArray && collectionsArray.size() > 0) {
+                    val collectionIds = collectionsArray.map { it.asText() }.filter { it.isNotBlank() }
+                    if (collectionIds.isNotEmpty()) {
+                        featuredCollectionService.assignCollectionsById(articleId, collectionIds)
+                        collectionsAssigned = collectionIds.size
+                        logger.info("Assigned {} collections to article {}", collectionsAssigned, articleId)
+                    }
+                }
+
+                successCount++
+                details.add(
+                    BackfillDetail(
+                        articleId = articleId,
+                        title = title,
+                        status = "success",
+                        tagsAssigned = tagsAssigned,
+                        collectionsAssigned = collectionsAssigned
+                    )
+                )
+
+            } catch (e: Exception) {
+                logger.error("Failed to backfill article {}: {}", articleId, e.message, e)
+                failedCount++
+                details.add(
+                    BackfillDetail(
+                        articleId = articleId,
+                        title = title,
+                        status = "failed",
+                        tagsAssigned = 0,
+                        collectionsAssigned = 0,
+                        errorMessage = e.message ?: "Unknown error"
+                    )
+                )
+            }
+        }
+
+        val totalTime = System.currentTimeMillis() - startTime
+        logger.info(
+            "Backfill completed in {}ms: checked={}, needs={}, success={}, failed={}, skipped={}",
+            totalTime, articlesToProcess.size, needsBackfill, successCount, failedCount, skippedCount
+        )
+
+        return BackfillResponse(
+            totalChecked = articlesToProcess.size,
+            needsBackfill = needsBackfill,
+            successCount = successCount,
+            failedCount = failedCount,
+            skippedCount = skippedCount,
+            details = details
+        )
+    }
 }
