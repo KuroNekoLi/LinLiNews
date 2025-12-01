@@ -7,6 +7,7 @@ import com.linli.news.domain.ArticleSource
 import com.linli.news.integration.FullTextRssClient
 import com.linli.news.repository.ArticleRepository
 import com.linli.news.repository.ArticleSourceRepository
+import com.linli.news.service.ArticleEmbeddingService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.ZonedDateTime
@@ -17,7 +18,10 @@ import java.util.regex.Pattern
 class FeedImportService(
     private val fullTextRssClient: FullTextRssClient,
     private val feedImportTxService: FeedImportTxService,
-    private val fullTextRssProperties: FullTextRssProperties
+    private val fullTextRssProperties: FullTextRssProperties,
+    private val articleEmbeddingService: ArticleEmbeddingService,
+    private val articleTagService: ArticleTagService,
+    private val featuredCollectionService: FeaturedCollectionService
 ) {
     private val logger = LoggerFactory.getLogger(FeedImportService::class.java)
 
@@ -92,6 +96,7 @@ class FeedImportService(
                 if (saved) {
                     imported++
                     logger.info("Successfully imported article from $sourceName/${section}: $title")
+                    safelyGenerateEmbedding(article)
 
                     // 檢查是否有完整內容
                     if (content != null && content.length > 200) {
@@ -112,6 +117,7 @@ class FeedImportService(
 
                                 // 使用新的交易服務更新文章內容
                                 feedImportTxService.updateArticleContent(article)
+                                safelyGenerateEmbedding(article, force = true)
                                 logger.info("Successfully fetched and saved full content (${responseContent.length} chars)")
                             } else {
                                 logger.debug("Full-text extraction returned limited content")
@@ -233,5 +239,29 @@ class FeedImportService(
         return matcher.replaceAll(" ")
             .replace("\\s+".toRegex(), " ")
             .trim()
+    }
+
+    private fun safelyGenerateEmbedding(article: Article, force: Boolean = false) {
+        try {
+            articleEmbeddingService.generateEmbeddingForArticle(article, force)
+            // 成功生成 embedding 後，配對 tags 和專題
+            safelyAssignTagsAndCollections(article)
+        } catch (ex: Exception) {
+            logger.warn("Failed to generate embedding for article ${article.id}: ${ex.message}")
+        }
+    }
+
+    private fun safelyAssignTagsAndCollections(article: Article) {
+        try {
+            articleTagService.assignTagsToArticle(article)
+        } catch (ex: Exception) {
+            logger.warn("Failed to assign tags to article ${article.id}: ${ex.message}")
+        }
+
+        try {
+            featuredCollectionService.assignCollectionsToArticle(article)
+        } catch (ex: Exception) {
+            logger.warn("Failed to assign collections to article ${article.id}: ${ex.message}")
+        }
     }
 }

@@ -52,3 +52,17 @@ openai:
   model: ${OPENAI_MODEL:gpt-5-mini}
   max-tokens: ${OPENAI_MAX_TOKENS:128000}
   explanation-fallback-enabled: ${OPENAI_EXPLANATION_FALLBACK_ENABLED:true}
+  embedding-model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+
+article:
+  embedding:
+    max-chars: ${ARTICLE_EMBEDDING_MAX_CHARS:4000}
+  tag:
+    max-tags: ${ARTICLE_TAG_MAX_TAGS:5}
+    min-score: ${ARTICLE_TAG_MIN_SCORE:0.6}
+  collection:
+    max-collections: ${ARTICLE_COLLECTION_MAX_COLLECTIONS:2}
+    min-score: ${ARTICLE_COLLECTION_MIN_SCORE:0.6}
+
+bootstrap:
+  tags-and-collections: ${BOOTSTRAP_TAGS_AND_COLLECTIONS:false}
