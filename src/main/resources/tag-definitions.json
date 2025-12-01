@@ -1,0 +1,202 @@
+[
+  {
+    "name": "AI & Machine Learning",
+    "description": "Artificial intelligence, machine learning, deep learning, neural networks, AI applications"
+  },
+  {
+    "name": "Technology",
+    "description": "General technology news, innovation, digital transformation, tech industry"
+  },
+  {
+    "name": "Business",
+    "description": "Business news, corporate strategy, market trends, entrepreneurship, startups"
+  },
+  {
+    "name": "Finance",
+    "description": "Financial markets, banking, investment, stock market, cryptocurrency, economy"
+  },
+  {
+    "name": "Politics",
+    "description": "Political news, government, elections, policy, international relations"
+  },
+  {
+    "name": "Health",
+    "description": "Healthcare, medicine, wellness, diseases, mental health, medical research"
+  },
+  {
+    "name": "Science",
+    "description": "Scientific discoveries, research, physics, chemistry, biology, space exploration"
+  },
+  {
+    "name": "Environment",
+    "description": "Climate change, environmental issues, sustainability, renewable energy, conservation"
+  },
+  {
+    "name": "Education",
+    "description": "Education system, schools, universities, learning, teaching, academic research"
+  },
+  {
+    "name": "Travel",
+    "description": "Travel destinations, tourism, hotels, flights, vacation, travel tips"
+  },
+  {
+    "name": "Food & Dining",
+    "description": "Restaurants, recipes, cuisine, cooking, food culture, nutrition"
+  },
+  {
+    "name": "Sports",
+    "description": "Sports news, athletes, competitions, tournaments, Olympics, fitness"
+  },
+  {
+    "name": "Entertainment",
+    "description": "Movies, TV shows, celebrities, music, arts, culture, awards"
+  },
+  {
+    "name": "Social Media",
+    "description": "Social networking, Facebook, Twitter, Instagram, TikTok, influencers"
+  },
+  {
+    "name": "Cybersecurity",
+    "description": "Data security, hacking, privacy, encryption, cyber attacks, digital safety"
+  },
+  {
+    "name": "Mobile Technology",
+    "description": "Smartphones, tablets, mobile apps, iOS, Android, mobile networks"
+  },
+  {
+    "name": "Cloud Computing",
+    "description": "Cloud services, AWS, Azure, Google Cloud, SaaS, cloud infrastructure"
+  },
+  {
+    "name": "E-commerce",
+    "description": "Online shopping, retail, Amazon, e-commerce platforms, digital payments"
+  },
+  {
+    "name": "Workplace",
+    "description": "Office culture, remote work, career development, workplace trends, productivity"
+  },
+  {
+    "name": "Transportation",
+    "description": "Cars, electric vehicles, public transport, aviation, autonomous vehicles"
+  },
+  {
+    "name": "Real Estate",
+    "description": "Property market, housing, real estate investment, architecture, construction"
+  },
+  {
+    "name": "Law & Justice",
+    "description": "Legal news, courts, trials, law enforcement, criminal justice, regulations"
+  },
+  {
+    "name": "Military & Defense",
+    "description": "Armed forces, defense policy, military operations, weapons, national security"
+  },
+  {
+    "name": "Energy",
+    "description": "Oil, gas, renewable energy, nuclear power, energy policy, power generation"
+  },
+  {
+    "name": "Space",
+    "description": "Space exploration, NASA, SpaceX, astronauts, satellites, astronomy"
+  },
+  {
+    "name": "Gaming",
+    "description": "Video games, esports, game industry, consoles, PC gaming, mobile gaming"
+  },
+  {
+    "name": "Fashion",
+    "description": "Fashion industry, clothing, designers, style trends, fashion shows"
+  },
+  {
+    "name": "Religion",
+    "description": "Religious news, faith, churches, religious leaders, spiritual practices"
+  },
+  {
+    "name": "Immigration",
+    "description": "Immigration policy, refugees, border control, citizenship, migration"
+  },
+  {
+    "name": "Agriculture",
+    "description": "Farming, crops, livestock, agricultural technology, food production"
+  },
+  {
+    "name": "Weather & Climate",
+    "description": "Weather forecasts, storms, natural disasters, climate patterns, meteorology"
+  },
+  {
+    "name": "Arts & Culture",
+    "description": "Visual arts, museums, galleries, cultural events, artistic movements"
+  },
+  {
+    "name": "Human Rights",
+    "description": "Civil rights, human rights issues, discrimination, equality, social justice"
+  },
+  {
+    "name": "International Affairs",
+    "description": "Global politics, diplomacy, international organizations, foreign policy"
+  },
+  {
+    "name": "Economics",
+    "description": "Economic indicators, GDP, inflation, trade, economic policy, labor market"
+  },
+  {
+    "name": "Manufacturing",
+    "description": "Industrial production, factories, supply chain, manufacturing technology"
+  },
+  {
+    "name": "Telecommunications",
+    "description": "Phone networks, 5G, internet infrastructure, telecom companies"
+  },
+  {
+    "name": "Retail",
+    "description": "Retail stores, shopping, consumer goods, retail trends, customer service"
+  },
+  {
+    "name": "Media & Journalism",
+    "description": "News media, journalism, press freedom, broadcasting, newspapers"
+  },
+  {
+    "name": "Psychology",
+    "description": "Mental processes, behavior, psychological research, therapy, cognition"
+  },
+  {
+    "name": "Wildlife",
+    "description": "Animals, biodiversity, endangered species, wildlife conservation, zoos"
+  },
+  {
+    "name": "Ocean & Marine",
+    "description": "Oceans, marine life, shipping, naval operations, ocean conservation"
+  },
+  {
+    "name": "Disaster & Emergency",
+    "description": "Natural disasters, emergencies, rescue operations, disaster relief"
+  },
+  {
+    "name": "Luxury & Lifestyle",
+    "description": "Luxury goods, high-end lifestyle, premium brands, wealth, affluence"
+  },
+  {
+    "name": "Innovation",
+    "description": "New inventions, breakthrough technologies, research and development, patents"
+  },
+  {
+    "name": "Social Issues",
+    "description": "Poverty, inequality, homelessness, social problems, community issues"
+  },
+  {
+    "name": "Books & Literature",
+    "description": "Books, authors, literature, publishing, reading, literary awards"
+  },
+  {
+    "name": "History",
+    "description": "Historical events, archaeology, heritage, historical research, monuments"
+  },
+  {
+    "name": "Photography",
+    "description": "Photography, cameras, photo journalism, visual storytelling, photo exhibitions"
+  },
+  {
+    "name": "Automotive",
+    "description": "Car industry, vehicle technology, auto shows, car manufacturers, driving"
+  }
+]
