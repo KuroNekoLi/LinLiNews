@@ -356,4 +356,42 @@ class AiArticleProcessorService(
         }
     }
 
+    /**
+     * 專門用於生成 Tags 和 Collections 的輕量級方法
+     */
+    fun generateTagsAndCollections(
+        title: String?,
+        text: String
+    ): JsonNode {
+        require(apiKey.isNotBlank()) { "OPENAI_API_KEY / openai.api-key is required" }
+        if (text.isBlank()) {
+            throw IllegalArgumentException("Text is empty; cannot generate tags/collections")
+        }
+
+        val systemPrompt = AiArticlePrompts.tagsAndCollectionsSystemPrompt(
+            availableTags,
+            availableCollections
+        )
+        val userPrompt = AiArticlePrompts.tagsAndCollectionsUserPrompt(
+            title ?: "(no title)",
+            text
+        )
+
+        val body = buildJsonModeBody(
+            systemPrompt = systemPrompt,
+            userPrompt = userPrompt,
+            temperature = 0.2
+        )
+
+        logger.info("[AI] Requesting OpenAI for generateTagsAndCollections (title='${title ?: "(no title)"}')")
+        val responseStr = postChatCompletions(body, operation = "generateTagsAndCollections")
+        val (_, content) = extractContentFromResponse(responseStr, "generateTagsAndCollections")
+
+        try {
+            return objectMapper.readTree(content)
+        } catch (e: Exception) {
+            logger.error("[AI] Failed to parse JSON from generateTagsAndCollections: ${e.message}")
+            throw IllegalStateException("AI generateTagsAndCollections response is not valid JSON")
+        }
+    }
 }

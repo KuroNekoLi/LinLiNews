@@ -1633,17 +1633,14 @@ class AiArticleService(
                     return@forEach
                 }
 
-                // 調用 AI teachingStage2 來生成 tags 和 collections
+                // 調用 AI generateTagsAndCollections 來生成 tags 和 collections
                 logger.info(
-                    "Generating tags/collections for article {} (difficulty={}, from={}, to={})",
-                    articleId, firstView.difficulty, firstView.fromLanguage, firstView.toLanguage
+                    "Generating tags/collections for article {} (using light-weight prompt)",
+                    articleId
                 )
-                val stage2Result = aiProcessor.teachingStage2(
-                    firstView.difficulty,
+                val aiResult = aiProcessor.generateTagsAndCollections(
                     firstView.titleFrom ?: title,
-                    cleanedText,
-                    firstView.fromLanguage,
-                    firstView.toLanguage
+                    cleanedText
                 )
 
                 // 從 AI 回應中提取並保存 tags 和 collections
@@ -1651,7 +1648,7 @@ class AiArticleService(
                 var collectionsAssigned = 0
 
                 // 處理 tags
-                val tagsArray = stage2Result.path("tags")
+                val tagsArray = aiResult.path("tags")
                 if (tagsArray.isArray && tagsArray.size() > 0) {
                     val tagNames = tagsArray.map { it.asText() }.filter { it.isNotBlank() }
                     if (tagNames.isNotEmpty()) {
@@ -1662,7 +1659,7 @@ class AiArticleService(
                 }
 
                 // 處理 collections
-                val collectionsArray = stage2Result.path("featured_collections")
+                val collectionsArray = aiResult.path("featured_collections")
                 if (collectionsArray.isArray && collectionsArray.size() > 0) {
                     val collectionIds = collectionsArray.map { it.asText() }.filter { it.isNotBlank() }
                     if (collectionIds.isNotEmpty()) {

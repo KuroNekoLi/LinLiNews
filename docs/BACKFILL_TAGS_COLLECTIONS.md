@@ -124,7 +124,8 @@ curl -X POST "http://localhost:8080/api/ai-articles/backfill-tags-and-collection
     - `force=true`：處理所有文章
 5. **調用 AI 生成**（如需處理）：
     - 使用文章的**第一個 view** 的 `cleanedTextFrom` 和其他資訊
-    - 呼叫 `AiProcessor.teachingStage2` 生成 tags 和 collections
+   - 呼叫 **輕量級 Prompt** (`AiProcessor.generateTagsAndCollections`)
+   - 只生成 `tags` 和 `featured_collections`，不重新生成文章內容（節省 Token 與時間）
 6. **配對並儲存**：
     - 從 AI 回應的 `tags` 陣列中提取 tag 名稱
     - 從 AI 回應的 `featured_collections` 陣列中提取專題 ID
@@ -135,7 +136,7 @@ curl -X POST "http://localhost:8080/api/ai-articles/backfill-tags-and-collection
 
 ### 1. API 配額
 
-- 每篇文章需要呼叫一次 OpenAI API（`teachingStage2`）
+- 每篇文章需要呼叫一次 OpenAI API（`generateTagsAndCollections`）
 - 如果文章數量很多，建議分批執行（使用 `limit` 參數）
 - 注意 OpenAI API 的速率限制和配額
 

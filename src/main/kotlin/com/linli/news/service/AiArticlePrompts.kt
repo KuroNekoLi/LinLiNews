@@ -386,6 +386,52 @@ ${EXPLANATION_JSON_SCHEMA.prependIndent("          ")}
     }
 
     /**
+     * Tags & Collections 分類 System Prompt。
+     */
+    fun tagsAndCollectionsSystemPrompt(
+        availableTags: List<String>,
+        availableCollections: List<Pair<String, String>>
+    ): String {
+        return """
+        你是一個專業的文章分類助手。
+        任務：根據提供的文章標題和內容，選擇最適合的 Tags 和 Featured Collections。
+        
+        1) Tags 選擇：
+           從以下標籤清單中選擇 3-5 個最符合文章主題的標籤：
+           ${availableTags.joinToString(", ")}
+        
+        2) Featured Collections 選擇：
+           從以下精選專題中選擇 0-2 個最適合的專題ID（可以不選）：
+           ${availableCollections.joinToString("\n           ") { "${it.first}: ${it.second}" }}
+           選擇標準：文章內容必須與專題描述高度吻合（相似度 >= 60%）。
+           
+        僅輸出 JSON 物件。
+        """.trimIndent()
+    }
+
+    /**
+     * Tags & Collections 分類 User Prompt。
+     */
+    fun tagsAndCollectionsUserPrompt(
+        title: String,
+        text: String
+    ): String {
+        return """
+        文章標題：$title
+        文章內容：
+        ```text
+        $text
+        ```
+        
+        請輸出 JSON：
+        {
+            "tags": [string],                  // 3-5 個標籤
+            "featured_collections": [string]   // 0-2 個專題 ID
+        }
+        """.trimIndent()
+    }
+
+    /**
      * 依難度提供寫作指引文字。
      */
     private fun difficultyWritingInstruction(difficulty: DifficultyLevel, fromLanguage: String = "en"): String {
