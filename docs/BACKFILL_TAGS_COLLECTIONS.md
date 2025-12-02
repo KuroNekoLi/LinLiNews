@@ -4,6 +4,12 @@
 
 `POST /api/ai-articles/backfill-tags-and-collections` 端點用於檢查所有 AI 文章，並為缺失 tags 和精選專題的文章重新生成這些資訊。
 
+**重要特性**：
+
+- 同一個 `article_id` 的所有 views（不同語言/難度）會共用同一組 tags 和 collections
+- 系統會按 `article_id` 去重，每個 ID 只處理一次
+- 如果該 ID 已有 tags 或 collections，所有相關 views 都會使用同一組資料
+
 ## 使用場景
 
 1. **初次部署**：現有的 AI 文章沒有 tags 和精選專題
@@ -109,20 +115,21 @@ curl -X POST "http://localhost:8080/api/ai-articles/backfill-tags-and-collection
 ## 處理流程
 
 1. **取得所有 AI 文章**：從 `article_ai` 表查詢
-2. **檢查每篇文章**：
+2. **按 article_id 去重**：確保每個文章 ID 只處理一次（不同語言/難度的 views 會共用同一組 tags/collections）
+3. **檢查每個 article_id**：
     - 查詢是否有 tags（`article_tag` 表）
     - 查詢是否有 collections（`article_featured_collection_assignment` 表）
-3. **判斷是否需要處理**：
+4. **判斷是否需要處理**：
     - `force=false`：只處理「tags 和 collections 都為空」的文章
     - `force=true`：處理所有文章
-4. **調用 AI 生成**：
-    - 使用文章的 `cleanedTextFrom` 和其他資訊
+5. **調用 AI 生成**（如需處理）：
+    - 使用文章的**第一個 view** 的 `cleanedTextFrom` 和其他資訊
     - 呼叫 `AiProcessor.teachingStage2` 生成 tags 和 collections
-5. **配對並儲存**：
+6. **配對並儲存**：
     - 從 AI 回應的 `tags` 陣列中提取 tag 名稱
     - 從 AI 回應的 `featured_collections` 陣列中提取專題 ID
-    - 呼叫 `ArticleTagService.assignTagsByName` 配對 tags
-    - 呼叫 `FeaturedCollectionService.assignCollectionsById` 配對專題
+    - 呼叫 `ArticleTagService.assignTagsByName` 配對 tags（該 article_id 的所有 views 共用）
+    - 呼叫 `FeaturedCollectionService.assignCollectionsById` 配對專題（該 article_id 的所有 views 共用）
 
 ## 注意事項
 
