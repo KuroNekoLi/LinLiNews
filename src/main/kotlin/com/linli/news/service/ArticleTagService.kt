@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.linli.news.domain.Article
 import com.linli.news.domain.ArticleTagAssignment
 import com.linli.news.domain.ArticleTagDefinition
+import com.linli.news.model.ArticleTagDefinitionDto
 import com.linli.news.repository.ArticleEmbeddingRepository
 import com.linli.news.repository.ArticleTagAssignmentRepository
 import com.linli.news.repository.ArticleTagDefinitionRepository
@@ -181,6 +182,21 @@ class ArticleTagService(
             }
         }
         logger.info("Tag assignment batch completed. Processed {} articles", processed)
+    }
+
+    /**
+     * 取得所有可用的 tags
+     */
+    fun getAllTags(): List<ArticleTagDefinitionDto> {
+        return articleTagDefinitionRepository.findAll()
+            .map { tag ->
+                ArticleTagDefinitionDto(
+                    id = tag.id ?: 0,
+                    name = tag.name,
+                    description = tag.description
+                )
+            }
+            .sortedBy { it.name }
     }
 
     private fun parseEmbedding(json: String): DoubleArray {

@@ -304,3 +304,24 @@ data class BackfillDetail(
     @field:Schema(description = "錯誤訊息（如果失敗）")
     val errorMessage: String? = null
 )
+
+@Schema(name = "ArticleTagDefinitionDto", description = "文章 Tag 定義")
+data class ArticleTagDefinitionDto(
+    val id: Long,
+    val name: String,
+    val description: String?
+)
+
+@Schema(name = "FeaturedCollectionDefinitionDto", description = "精選專題定義")
+data class FeaturedCollectionDefinitionDto(
+    val id: Long,
+    @field:JsonProperty("collection_id")
+    val collectionId: String,
+    val title: String,
+    val subtitle: String?,
+    val description: String?,
+    @field:JsonProperty("color_start")
+    val colorStart: String?,
+    @field:JsonProperty("color_end")
+    val colorEnd: String?
+)

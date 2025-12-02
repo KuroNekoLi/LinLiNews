@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.linli.news.domain.Article
 import com.linli.news.domain.ArticleFeaturedCollectionAssignment
 import com.linli.news.domain.FeaturedCollection
+import com.linli.news.model.FeaturedCollectionDefinitionDto
 import com.linli.news.repository.ArticleEmbeddingRepository
 import com.linli.news.repository.ArticleFeaturedCollectionAssignmentRepository
 import com.linli.news.repository.FeaturedCollectionRepository
@@ -202,6 +203,25 @@ class FeaturedCollectionService(
             }
         }
         logger.info("Collection assignment batch completed. Processed {} articles", processed)
+    }
+
+    /**
+     * 取得所有可用的精選專題
+     */
+    fun getAllCollections(): List<FeaturedCollectionDefinitionDto> {
+        return featuredCollectionRepository.findAll()
+            .map { collection ->
+                FeaturedCollectionDefinitionDto(
+                    id = collection.id ?: 0,
+                    collectionId = collection.collectionId,
+                    title = collection.title,
+                    subtitle = collection.subtitle,
+                    description = collection.description,
+                    colorStart = collection.colorStart,
+                    colorEnd = collection.colorEnd
+                )
+            }
+            .sortedBy { it.collectionId }
     }
 
     private fun parseEmbedding(json: String): DoubleArray {
