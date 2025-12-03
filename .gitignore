@@ -21,3 +21,8 @@ tmp/
 
 # Spring Boot
 *.pid
+
+# SQLite Database
+*.db
+*.db-shm
+*.db-wal
