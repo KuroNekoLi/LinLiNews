@@ -224,6 +224,35 @@ class FeaturedCollectionService(
             .sortedBy { it.collectionId }
     }
 
+    /**
+     * 初始化精選專題（僅在不存在時生成）
+     */
+    @Transactional
+    fun initCollections(collections: List<FeaturedCollectionDefinitionDto>) {
+        var count = 0
+        collections.forEach { dto ->
+            if (featuredCollectionRepository.findByCollectionId(dto.collectionId) == null) {
+                logger.info("Initializing collection: {}", dto.collectionId)
+                try {
+                    generateCollectionEmbedding(
+                        collectionId = dto.collectionId,
+                        title = dto.title,
+                        subtitle = dto.subtitle,
+                        description = dto.description,
+                        colorStart = dto.colorStart,
+                        colorEnd = dto.colorEnd
+                    )
+                    count++
+                } catch (e: Exception) {
+                    logger.error("Failed to initialize collection {}: {}", dto.collectionId, e.message)
+                }
+            }
+        }
+        if (count > 0) {
+            logger.info("Initialized {} new collections", count)
+        }
+    }
+
     private fun parseEmbedding(json: String): DoubleArray {
         return objectMapper.readValue(json, DoubleArray::class.java)
     }

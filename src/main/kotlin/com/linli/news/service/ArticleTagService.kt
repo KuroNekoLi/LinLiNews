@@ -199,6 +199,28 @@ class ArticleTagService(
             .sortedBy { it.name }
     }
 
+    /**
+     * 初始化 tags（僅在不存在時生成）
+     */
+    @Transactional
+    fun initTags(tags: List<Pair<String, String>>) {
+        var count = 0
+        tags.forEach { (name, description) ->
+            if (articleTagDefinitionRepository.findByName(name) == null) {
+                logger.info("Initializing tag: {}", name)
+                try {
+                    generateTagEmbedding(name, description)
+                    count++
+                } catch (e: Exception) {
+                    logger.error("Failed to initialize tag {}: {}", name, e.message)
+                }
+            }
+        }
+        if (count > 0) {
+            logger.info("Initialized {} new tags", count)
+        }
+    }
+
     private fun parseEmbedding(json: String): DoubleArray {
         return objectMapper.readValue(json, DoubleArray::class.java)
     }
