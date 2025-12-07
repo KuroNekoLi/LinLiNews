@@ -158,7 +158,12 @@ class AiArticleProcessorService(
             throw IllegalArgumentException("Article text content is empty; cannot process with AI")
         }
 
-        val systemPrompt = AiArticlePrompts.processSystemPrompt(fromLanguage, toLanguage)
+        val systemPrompt = AiArticlePrompts.processSystemPrompt(
+            fromLanguage,
+            toLanguage,
+            availableTags,
+            availableCollections
+        )
         val userPrompt = AiArticlePrompts.processUserPrompt(title, textContent, fromLanguage, toLanguage)
 
         val body = buildJsonModeBody(

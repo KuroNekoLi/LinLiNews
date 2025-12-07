@@ -913,6 +913,11 @@ class AiArticleService(
                                 combined.put("summary_from", stage2Result.path("summary_from").asText(null))
                                 combined.put("summary_to", stage2Result.path("summary_to").asText(null))
                                 combined.set<JsonNode>("explanation", stage2Result.path("explanation"))
+                                combined.set<JsonNode>("tags", stage2Result.path("tags"))
+                                combined.set<JsonNode>(
+                                    "featured_collections",
+                                    stage2Result.path("featured_collections")
+                                )
 
                                 if (combined.path("title_from").isNull && !stage2Result.path("title_from").isNull) {
                                     combined.put("title_from", stage2Result.path("title_from").asText(null))
@@ -1163,6 +1168,8 @@ class AiArticleService(
             combined.put("summary_from", stage2Result.path("summary_from").asText(null))
             combined.put("summary_to", stage2Result.path("summary_to").asText(null))
             combined.set<JsonNode>("explanation", stage2Result.path("explanation"))
+            combined.set<JsonNode>("tags", stage2Result.path("tags"))
+            combined.set<JsonNode>("featured_collections", stage2Result.path("featured_collections"))
 
             if (combined.path("title_from").isNull && !stage2Result.path("title_from").isNull) {
                 combined.put("title_from", stage2Result.path("title_from").asText(null))

@@ -137,8 +137,26 @@ object AiArticlePrompts {
     /**
      * 處理純文字內容時使用的 system prompt。
      */
-    fun processSystemPrompt(fromLanguage: String, toLanguage: String): String {
+    fun processSystemPrompt(
+        fromLanguage: String,
+        toLanguage: String,
+        availableTags: List<String>,
+        availableCollections: List<Pair<String, String>>
+    ): String {
         val fromLangName = getLanguageDisplayName(fromLanguage)
+
+        val tagsInstruction = """
+        5) 從以下標籤清單中選擇 3-5 個最符合文章主題的標籤：
+           ${availableTags.joinToString(", ")}
+           選擇標準：標籤必須與文章的核心主題高度相關
+        """.trimIndent()
+
+        val collectionsInstruction = """
+        6) 從以下精選專題中選擇 0-2 個最適合的專題ID（可以不選）：
+           ${availableCollections.joinToString("\n           ") { "${it.first}: ${it.second}" }}
+           選擇標準：文章內容必須與專題描述高度吻合（相似度 >= 60%）
+        """.trimIndent()
+
         return """
         你是專業的雙語新聞教學助手。
         - 原文語言：$fromLanguage
@@ -151,6 +169,8 @@ ${EXPLANATION_TASK_DESCRIPTION.prependIndent("           ")}
         4) 產生雙語摘要：
            - `summary_from`：以 Markdown 條列呈現的 $fromLanguage 摘要（至少 3 點）。
            - `summary_to`：對應的 $toLanguage 翻譯（至少 3 點）。
+        $tagsInstruction
+        $collectionsInstruction
         所有 *_from 欄位必須使用 $fromLanguage，*_to 欄位必須使用 $toLanguage。
         僅輸出 JSON 物件，不要多餘文字。
     """.trimIndent()
