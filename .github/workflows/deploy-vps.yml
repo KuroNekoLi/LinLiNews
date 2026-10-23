@@ -16,6 +16,8 @@ jobs:
   deploy:
     if: vars.VPS_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - name: Prepare restricted SSH access
         env:
           DEPLOY_KEY: ${{ secrets.VPS_DEPLOY_KEY }}
