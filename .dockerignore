@@ -1,0 +1,13 @@
+.git/
+.gradle/
+build/
+**/build/
+.idea/
+.vscode/
+.env
+.env.*
+*.sql
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
